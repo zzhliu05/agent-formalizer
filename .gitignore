@@ -1,0 +1,18 @@
+# Local credentials
+.env
+.env.*
+!.env.example
+*.key
+
+# Python environments and caches
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+*.py[cod]
+
+# Textbook PDFs may be copyrighted and should be added deliberately.
+raw/textbooks/*.pdf
+
+# Private/local PDF experiments and rendered inspection artifacts
+tmp/
+outputs/private-tests/

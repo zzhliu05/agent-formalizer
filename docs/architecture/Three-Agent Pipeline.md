@@ -38,11 +38,13 @@ Each theorem receives a stable `theorem_id`. Every downstream artifact must reta
 
 ### Output contract
 
-Write one theorem package under `outputs/pipeline/<theorem_id>/extraction/` containing:
+Write immutable attempts under `outputs/pipeline/<theorem_id>/extraction/attempt-NNN/` containing:
 
 - `theorem.json`: identifier, source anchors, normalized statement, assumptions, variables, conclusion, dependencies, and OCR confidence;
 - `context.md`: readable source context, prerequisite explanations, notation map, and ambiguity notes;
 - `source.txt`: the minimally necessary OCR excerpt with page markers.
+
+`outputs/pipeline/<theorem_id>/extraction/latest.json` identifies the newest attempt without overwriting prior evidence.
 
 Agent 1 must not write Lean code or silently repair a mathematically ambiguous source statement. Ambiguity is recorded for review or user resolution.
 

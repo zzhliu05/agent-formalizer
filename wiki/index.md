@@ -35,4 +35,4 @@ This is the navigational map for the project. Start here after reading the newes
 
 ## Current Status
 
-The vault scaffold is initialized and P001 defines the first three-agent architecture. Implementation can proceed agent by agent while preserving the shared artifact contracts and review gate.
+The vault scaffold is initialized, P001 defines the three-agent architecture, and the first Gemini-backed PDF OCR/theorem extraction prototype is available under `code/agents/extraction/`. See [[papers/CC-OCR V2]] for its document-processing basis and [[../notes/2026-07-22 Folland OCR Smoke Test]] for the first image-only textbook test.
