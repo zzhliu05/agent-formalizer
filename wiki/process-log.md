@@ -9,6 +9,13 @@ updated: 2026-07-22
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
 
+## 2026-07-22 - GitHub Repository Published
+
+Status: resolved
+Links: [zzhliu05/agent-formalizer](https://github.com/zzhliu05/agent-formalizer) - [[index]]
+Summary: Published the initialized ZOOT vault to the public GitHub repository and configured local `main` to track `origin/main`.
+Next: Begin the first research process when source collection or formalization workflow design starts.
+
 ## 2026-07-22 - Vault Initialized
 
 Status: active
