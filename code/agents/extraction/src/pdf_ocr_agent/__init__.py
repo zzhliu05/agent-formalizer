@@ -1,7 +1,7 @@
-"""PDF OCR and theorem-context extraction agent."""
+"""Gemini-backed PDF-to-Markdown transcription agent."""
 
-from .models import ChunkExtraction, TheoremCandidate
-from .pipeline import ExtractionPipeline
+from .models import ChunkMarkdown, PageMarkdown
+from .pipeline import MarkdownPipeline
 
-__all__ = ["ChunkExtraction", "ExtractionPipeline", "TheoremCandidate"]
-__version__ = "0.1.0"
+__all__ = ["ChunkMarkdown", "MarkdownPipeline", "PageMarkdown"]
+__version__ = "0.2.0"

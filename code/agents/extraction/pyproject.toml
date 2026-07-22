@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pdf-ocr-agent"
-version = "0.1.0"
-description = "Gemini-backed PDF OCR and theorem-context extraction agent"
+version = "0.2.0"
+description = "Gemini-backed PDF-to-Markdown transcription agent"
 requires-python = ">=3.11"
 dependencies = [
   "google-genai>=1.0.0",

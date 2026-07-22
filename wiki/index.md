@@ -35,4 +35,4 @@ This is the navigational map for the project. Start here after reading the newes
 
 ## Current Status
 
-The vault scaffold is initialized, P001 defines the three-agent architecture, and the first Gemini-backed PDF OCR/theorem extraction prototype is available under `code/agents/extraction/`. See [[papers/CC-OCR V2]] for its document-processing basis and [[../notes/2026-07-22 Folland OCR Smoke Test]] for the first image-only textbook test.
+The vault scaffold is initialized, P001 defines the three-agent architecture, and Agent 1 currently uses Gemini only for page-anchored PDF-to-Markdown conversion under `code/agents/extraction/`. The theorem/context extraction stage is paused pending a separate extractor and evaluation policy. See [[papers/CC-OCR V2]] and the superseded [[../notes/2026-07-22 Folland OCR Smoke Test]].

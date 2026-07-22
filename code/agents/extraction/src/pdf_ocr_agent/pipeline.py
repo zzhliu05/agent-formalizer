@@ -11,12 +11,14 @@ from typing import Protocol
 
 from pypdf import PdfReader, PdfWriter
 
-from .models import ChunkExtraction, TheoremCandidate
-from .prompts import extraction_prompt
+from .models import ChunkMarkdown
+from .prompts import markdown_prompt
 
 
 class ChunkExtractor(Protocol):
-    def extract(self, pdf_path: Path, prompt: str) -> ChunkExtraction: ...
+    model_name: str
+
+    def extract(self, pdf_path: Path, prompt: str) -> ChunkMarkdown: ...
 
 
 @dataclass(frozen=True)
@@ -27,11 +29,11 @@ class PdfChunk:
 
 
 @dataclass(frozen=True)
-class ExtractionResult:
+class MarkdownRunResult:
     document_id: str
     run_id: str
-    chunk_count: int
-    theorem_ids: tuple[str, ...]
+    run_dir: Path
+    chunk_files: tuple[Path, ...]
 
 
 def _safe_document_id(value: str) -> str:
@@ -74,134 +76,65 @@ def split_pdf(
     return chunks
 
 
-def shift_candidate_pages(candidate: TheoremCandidate, offset: int) -> TheoremCandidate:
-    shifted = candidate.model_copy(deep=True)
-    shifted.source_anchor.page_start += offset
-    shifted.source_anchor.page_end += offset
-    for item in shifted.notation:
-        if item.source_page is not None:
-            item.source_page += offset
-    for item in shifted.prerequisites:
-        if item.source_page is not None:
-            item.source_page += offset
-    for item in shifted.ambiguities:
-        if item.source_page is not None:
-            item.source_page += offset
-    return shifted
+def _validate_pages(result: ChunkMarkdown, page_count: int) -> None:
+    actual = [page.page_number for page in result.pages]
+    expected = list(range(1, page_count + 1))
+    if actual != expected:
+        raise ValueError(f"Gemini returned page sequence {actual}; expected {expected}")
 
 
-def theorem_id(document_id: str, candidate: TheoremCandidate) -> str:
-    identity = "|".join(
-        [
-            document_id,
-            str(candidate.source_anchor.page_start),
-            str(candidate.source_anchor.page_end),
-            " ".join(candidate.normalized_statement.split()).casefold(),
-        ]
-    )
-    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
-    return f"{document_id}-{digest}"
+def _chunk_markdown(
+    *,
+    document_id: str,
+    run_id: str,
+    chunk_index: int,
+    original_page_start: int,
+    original_page_end: int,
+    source_pdf: str,
+    model: str,
+    result: ChunkMarkdown,
+) -> str:
+    sections = []
+    for page in result.pages:
+        original_page = original_page_start + page.page_number - 1
+        warnings = "\n".join(f"> OCR warning: {warning}" for warning in page.warnings)
+        section = (
+            f"<!-- pdf-page: {original_page} -->\n\n"
+            f"## PDF page {original_page}\n\n"
+            f"{page.markdown.strip()}\n"
+        )
+        if warnings:
+            section += f"\n{warnings}\n"
+        section += f"\n<!-- ocr-confidence: {page.confidence:.3f} -->"
+        sections.append(section)
 
+    return f"""---
+type: ocr-chunk
+schema_version: "1.0"
+document_id: {document_id}
+run_id: {run_id}
+chunk_index: {chunk_index}
+pdf_page_start: {original_page_start}
+pdf_page_end: {original_page_end}
+source_pdf: {json.dumps(source_pdf, ensure_ascii=False)}
+model: {model}
+---
 
-def _next_attempt_dir(extraction_root: Path) -> Path:
-    attempts = []
-    if extraction_root.exists():
-        for path in extraction_root.glob("attempt-[0-9][0-9][0-9]"):
-            attempts.append(int(path.name.removeprefix("attempt-")))
-    number = max(attempts, default=0) + 1
-    attempt_dir = extraction_root / f"attempt-{number:03d}"
-    attempt_dir.mkdir(parents=True, exist_ok=False)
-    return attempt_dir
+# OCR chunk {chunk_index:04d}: PDF pages {original_page_start}-{original_page_end}
 
-
-def _context_markdown(theorem_key: str, candidate: TheoremCandidate) -> str:
-    notation = "\n".join(
-        f"- `{item.symbol}` — {item.meaning} (page {item.source_page or 'unresolved'}, {item.source_status})"
-        for item in candidate.notation
-    ) or "- None extracted."
-    prerequisites = "\n".join(
-        f"- **{item.label}** ({item.kind}, {item.source_status}, confidence {item.confidence:.2f}): "
-        f"{item.statement} — {item.relation}"
-        + (f" [page {item.source_page}]" if item.source_page else "")
-        for item in candidate.prerequisites
-    ) or "- None extracted."
-    ambiguities = "\n".join(
-        f"- {item.text}: {item.reason}" + (f" [page {item.source_page}]" if item.source_page else "")
-        for item in candidate.ambiguities
-    ) or "- None reported."
-    proof = candidate.proof_sketch or "No proof sketch was extracted."
-    return f"""# Context for {theorem_key}
-
-## Source Context
-
-{candidate.surrounding_context or 'No additional surrounding prose was extracted.'}
-
-## Variables
-
-{chr(10).join(f'- {item}' for item in candidate.variables) or '- None extracted.'}
-
-## Assumptions
-
-{chr(10).join(f'- {item}' for item in candidate.assumptions) or '- None extracted.'}
-
-## Notation
-
-{notation}
-
-## Prerequisites
-
-{prerequisites}
-
-## Proof Sketch
-
-{proof}
-
-## Ambiguities
-
-{ambiguities}
+{chr(10).join(sections)}
 """
 
 
-def materialize_candidate(
-    *,
-    output_root: Path,
-    document_id: str,
-    run_id: str,
-    candidate: TheoremCandidate,
-) -> str:
-    theorem_key = theorem_id(document_id, candidate)
-    extraction_root = output_root / theorem_key / "extraction"
-    attempt_dir = _next_attempt_dir(extraction_root)
-    payload = {
-        "schema_version": "1.0",
-        "theorem_id": theorem_key,
-        "document_id": document_id,
-        "run_id": run_id,
-        **candidate.model_dump(mode="json"),
-    }
-    (attempt_dir / "theorem.json").write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    (attempt_dir / "context.md").write_text(
-        _context_markdown(theorem_key, candidate), encoding="utf-8"
-    )
-    source = (
-        f"[PDF pages {candidate.source_anchor.page_start}-{candidate.source_anchor.page_end}]\n"
-        f"{candidate.original_text.strip()}\n"
-    )
-    (attempt_dir / "source.txt").write_text(source, encoding="utf-8")
-    latest = {
-        "theorem_id": theorem_key,
-        "attempt": attempt_dir.name,
-        "run_id": run_id,
-    }
-    (extraction_root / "latest.json").write_text(
-        json.dumps(latest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-    return theorem_key
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
-class ExtractionPipeline:
+class MarkdownPipeline:
     def __init__(self, extractor: ChunkExtractor | None) -> None:
         self._extractor = extractor
 
@@ -212,7 +145,7 @@ class ExtractionPipeline:
         pages_per_chunk: int,
         overlap_pages: int,
     ) -> list[tuple[int, int]]:
-        with tempfile.TemporaryDirectory(prefix="pdf-ocr-plan-") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="pdf-markdown-plan-") as temp_dir:
             chunks = split_pdf(
                 pdf_path,
                 Path(temp_dir),
@@ -230,7 +163,7 @@ class ExtractionPipeline:
         pages_per_chunk: int = 12,
         overlap_pages: int = 2,
         source_page_offset: int = 0,
-    ) -> ExtractionResult:
+    ) -> MarkdownRunResult:
         if self._extractor is None:
             raise RuntimeError("An extractor is required for a live run")
         if not pdf_path.is_file() or pdf_path.suffix.casefold() != ".pdf":
@@ -239,72 +172,70 @@ class ExtractionPipeline:
             raise ValueError("source_page_offset must not be negative")
 
         safe_id = _safe_document_id(document_id)
-        run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        candidates: dict[str, TheoremCandidate] = {}
-        chunk_results: list[dict] = []
+        run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        run_dir = output_root / safe_id / run_id
+        chunks_dir = run_dir / "chunks"
+        chunks_dir.mkdir(parents=True, exist_ok=False)
+        manifest_chunks = []
+        chunk_files = []
 
-        with tempfile.TemporaryDirectory(prefix="pdf-ocr-agent-") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="pdf-markdown-agent-") as temp_dir:
             chunks = split_pdf(
                 pdf_path,
                 Path(temp_dir),
                 pages_per_chunk=pages_per_chunk,
                 overlap_pages=overlap_pages,
             )
-            for chunk in chunks:
-                prompt = extraction_prompt(
-                    document_id=safe_id,
-                    original_page_start=chunk.page_start + source_page_offset,
-                    original_page_end=chunk.page_end + source_page_offset,
+            for index, chunk in enumerate(chunks, start=1):
+                original_start = chunk.page_start + source_page_offset
+                original_end = chunk.page_end + source_page_offset
+                result = self._extractor.extract(
+                    chunk.path,
+                    markdown_prompt(
+                        document_id=safe_id,
+                        original_page_start=original_start,
+                        original_page_end=original_end,
+                    ),
                 )
-                result = self._extractor.extract(chunk.path, prompt)
-                chunk_results.append(
+                _validate_pages(result, chunk.page_end - chunk.page_start + 1)
+                filename = f"chunk-{index:04d}-pages-{original_start:05d}-{original_end:05d}.md"
+                chunk_path = chunks_dir / filename
+                chunk_path.write_text(
+                    _chunk_markdown(
+                        document_id=safe_id,
+                        run_id=run_id,
+                        chunk_index=index,
+                        original_page_start=original_start,
+                        original_page_end=original_end,
+                        source_pdf=pdf_path.name,
+                        model=self._extractor.model_name,
+                        result=result,
+                    ),
+                    encoding="utf-8",
+                )
+                chunk_files.append(chunk_path)
+                manifest_chunks.append(
                     {
-                        "original_page_start": chunk.page_start + source_page_offset,
-                        "original_page_end": chunk.page_end + source_page_offset,
-                        "response": result.model_dump(mode="json"),
+                        "chunk_index": index,
+                        "pdf_page_start": original_start,
+                        "pdf_page_end": original_end,
+                        "path": f"chunks/{filename}",
                     }
                 )
-                page_count = chunk.page_end - chunk.page_start + 1
-                for candidate in result.candidates:
-                    if candidate.source_anchor.page_end > page_count:
-                        raise ValueError(
-                            f"Model returned page {candidate.source_anchor.page_end} for a {page_count}-page chunk"
-                        )
-                    shifted = shift_candidate_pages(
-                        candidate, chunk.page_start - 1 + source_page_offset
-                    )
-                    key = theorem_id(safe_id, shifted)
-                    existing = candidates.get(key)
-                    if existing is None or shifted.confidence > existing.confidence:
-                        candidates[key] = shifted
 
-        output_root.mkdir(parents=True, exist_ok=True)
-        theorem_keys = tuple(
-            materialize_candidate(
-                output_root=output_root,
-                document_id=safe_id,
-                run_id=run_id,
-                candidate=candidate,
-            )
-            for _, candidate in sorted(candidates.items())
-        )
-        run_root = output_root / "_runs" / run_id
-        run_root.mkdir(parents=True, exist_ok=False)
-        for index, chunk_result in enumerate(chunk_results, start=1):
-            (run_root / f"chunk-{index:04d}.json").write_text(
-                json.dumps(chunk_result, ensure_ascii=False, indent=2) + "\n",
-                encoding="utf-8",
-            )
         manifest = {
             "schema_version": "1.0",
-            "run_id": run_id,
             "document_id": safe_id,
+            "run_id": run_id,
             "source_pdf": pdf_path.name,
+            "source_pdf_sha256": _sha256(pdf_path),
             "source_page_offset": source_page_offset,
-            "chunk_count": len(chunks),
-            "theorem_ids": theorem_keys,
+            "model": self._extractor.model_name,
+            "pages_per_chunk": pages_per_chunk,
+            "overlap_pages": overlap_pages,
+            "chunks": manifest_chunks,
         }
-        (run_root / "manifest.json").write_text(
+        (run_dir / "manifest.json").write_text(
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
-        return ExtractionResult(safe_id, run_id, len(chunks), theorem_keys)
+        return MarkdownRunResult(safe_id, run_id, run_dir, tuple(chunk_files))

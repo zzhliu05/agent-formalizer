@@ -9,9 +9,17 @@ updated: 2026-07-22
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
 
-## 2026-07-22 - Folland OCR Smoke Test Passed
+## 2026-07-22 - Agent 1 Narrowed to Markdown OCR
 
 Status: active
+Process: P001
+Links: [[../code/agents/extraction/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: Removed theorem identification, candidate recovery, prerequisite inference, and theorem-package generation from the active Gemini path. Agent 1 now emits only immutable, page-anchored Markdown chunks and a run manifest.
+Next: Evaluate Markdown fidelity on representative textbook pages before choosing a separate theorem/context extractor.
+
+## 2026-07-22 - Folland OCR Smoke Test Passed
+
+Status: superseded
 Process: P001
 Links: [[../notes/2026-07-22 Folland OCR Smoke Test]] - [[../code/agents/extraction/README]]
 Summary: Ran Agent 1 on an image-only Folland scan. Gemini 3.5 Flash-Lite recognized pages 19–21; conditional candidate recovery produced all ten labeled units, and context enrichment linked the Schröder–Bernstein theorem to the preceding cardinality definition.
@@ -19,11 +27,11 @@ Next: Rotate the disclosed API key, then evaluate more pages and add extraction-
 
 ## 2026-07-22 - Agent 1 OCR Prototype Implemented
 
-Status: active
+Status: superseded
 Process: P001
 Links: [[../code/agents/extraction/README]] - [[papers/CC-OCR V2]] - [[../docs/architecture/Three-Agent Pipeline]]
 Summary: Implemented the first PDF OCR and theorem-context extraction agent with Gemini native PDF input, structured outputs, overlapping page chunks, stable theorem IDs, evidence-aware prerequisites, immutable attempts, and secret-safe configuration.
-Next: Rotate the exposed Gemini credential, run the agent on a licensed textbook sample, and review extraction quality before tuning prompts or chunk sizes.
+Next: Historical implementation; use the newer Markdown-only OCR stage above.
 
 ## 2026-07-22 - Three-Agent Pipeline Defined
 

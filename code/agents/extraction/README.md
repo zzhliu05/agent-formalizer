@@ -1,17 +1,33 @@
-# PDF OCR and Theorem Extraction Agent
+# PDF-to-Markdown OCR Agent
 
-This is the first executable Agent 1 prototype for P001. It uses Gemini's native PDF understanding to jointly perform recognition, layout-aware parsing, formula transcription, theorem extraction, and prerequisite-context extraction.
+This is the current executable Agent 1 milestone for P001. Gemini is used only to convert image-based or mixed PDFs into page-anchored Markdown chunks. It does not identify theorem records, infer prerequisites, generate theorem IDs, or produce Lean.
 
-The design follows the main practical lessons of [CC-OCR V2](https://arxiv.org/abs/2605.03903): document literacy must cover recognition, parsing, grounding, extraction, and question answering; relying on an unverified plain-text OCR intermediate can propagate errors; and evidence location is required for auditable results.
+The theorem and context extraction stage is intentionally deferred until a separate extractor and evaluation policy are selected.
+
+## Output contract
+
+Each run is immutable:
+
+```text
+<output-root>/<document-id>/<run-id>/
+  manifest.json
+  chunks/
+    chunk-0001-pages-00001-00012.md
+    chunk-0002-pages-00011-00022.md
+```
+
+Every Markdown file contains YAML metadata, explicit `<!-- pdf-page: N -->` anchors, one section per source page, OCR confidence comments, and warnings for uncertain content. Printed theorem labels remain ordinary transcribed Markdown.
+
+The future theorem/context extractor will consume these Markdown chunks through a separate model adapter. It is not part of this package yet.
 
 ## Safety
 
 - Never commit API keys or put them in command arguments.
 - Supply `GEMINI_API_KEY` through the process environment.
 - PDF files under `raw/textbooks/` are ignored by default because source licensing must be checked before publication.
-- Put OCR experiments on unlicensed or privately held books under `outputs/private-tests/`; this directory is never published.
+- Put experiments on privately held books under `outputs/private-tests/`; this directory is never published.
 - Gemini uploads are deleted after each request on a best-effort basis.
-- Temporary Gemini capacity and rate-limit errors use three bounded attempts with exponential backoff.
+- Temporary capacity and rate-limit errors use bounded retries with exponential backoff.
 
 ## Install
 
@@ -28,32 +44,15 @@ code/agents/extraction/.venv/Scripts/python -m pip install -e "code/agents/extra
 $env:GEMINI_API_KEY = "your-rotated-key"
 code/agents/extraction/.venv/Scripts/python -m pdf_ocr_agent `
   raw/textbooks/example.pdf `
-  --output-root outputs/pipeline `
+  --output-root outputs/ocr `
   --document-id example-textbook
 ```
 
-Useful options:
+Options:
 
-- `--model`: defaults to `GEMINI_MODEL` or `gemini-3.5-flash-lite`, which succeeded on the first scanned-textbook test.
-- `--max-attempts`: defaults to 3; set to 1 for a no-retry quota probe.
+- `--model`: defaults to `GEMINI_MODEL` or `gemini-3.5-flash-lite`.
 - `--pages-per-chunk`: defaults to 12.
-- `--overlap-pages`: defaults to 2, preserving nearby definitions across chunk boundaries.
-- `--source-page-offset`: preserves original PDF page anchors when running on a temporary page subset.
+- `--overlap-pages`: defaults to 2.
+- `--source-page-offset`: restores original page anchors when processing a temporary PDF subset.
+- `--max-attempts`: defaults to 3.
 - `--dry-run`: validates the PDF and reports chunk boundaries without calling Gemini.
-
-Each theorem is written to:
-
-```text
-outputs/pipeline/<theorem_id>/extraction/attempt-NNN/
-  theorem.json
-  context.md
-  source.txt
-```
-
-`outputs/pipeline/<theorem_id>/extraction/latest.json` points to the newest immutable attempt.
-
-Run-level files under `outputs/pipeline/_runs/<run_id>/` preserve each chunk's page OCR observations and structured response, including empty or failed-detection cases needed for prompt evaluation.
-
-If visual OCR detects theorem-like printed labels but returns no candidates, the Gemini adapter conditionally performs one text-only recovery pass over the page observations. It does not invoke this extra pass for label-free chunks.
-
-Candidates that still lack both prerequisites and notation trigger one batch context-enrichment pass. Local merge logic locks the extracted statement and source anchor, accepting only contextual fields from that pass.

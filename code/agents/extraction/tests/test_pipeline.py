@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
 from pypdf import PdfWriter
 
-from pdf_ocr_agent.models import ChunkExtraction, SourceAnchor, TheoremCandidate
-from pdf_ocr_agent.pipeline import ExtractionPipeline, shift_candidate_pages, theorem_id
+from pdf_ocr_agent.models import ChunkMarkdown, PageMarkdown
+from pdf_ocr_agent.pipeline import MarkdownPipeline
 
 
 def _pdf(path: Path, pages: int) -> Path:
@@ -18,56 +19,78 @@ def _pdf(path: Path, pages: int) -> Path:
     return path
 
 
-def _candidate(page: int = 1) -> TheoremCandidate:
-    return TheoremCandidate(
-        local_id="t1",
-        kind="theorem",
-        title="Sample theorem",
-        original_text="For every natural number n, n = n.",
-        normalized_statement="For every natural number n, n = n.",
-        variables=["n is a natural number"],
-        assumptions=[],
-        conclusion="n = n",
-        source_anchor=SourceAnchor(page_start=page, page_end=page, section="1"),
-        confidence=0.99,
-    )
-
-
 class FakeExtractor:
-    def extract(self, pdf_path: Path, prompt: str) -> ChunkExtraction:
-        return ChunkExtraction(chunk_summary="test", candidates=[_candidate()])
+    model_name = "fake-markdown-model"
+
+    def extract(self, pdf_path: Path, prompt: str) -> ChunkMarkdown:
+        from pypdf import PdfReader
+
+        return ChunkMarkdown(
+            pages=[
+                PageMarkdown(
+                    page_number=index,
+                    markdown=f"### Proposition 0.{index}\n\n$A = A$",
+                    confidence=0.99,
+                )
+                for index in range(1, len(PdfReader(pdf_path).pages) + 1)
+            ],
+        )
 
 
 def test_chunk_plan_uses_overlap(tmp_path: Path) -> None:
     pdf = _pdf(tmp_path / "book.pdf", 7)
-    chunks = ExtractionPipeline(None).plan_chunks(pdf, pages_per_chunk=3, overlap_pages=1)
+    chunks = MarkdownPipeline(None).plan_chunks(pdf, pages_per_chunk=3, overlap_pages=1)
     assert chunks == [(1, 3), (3, 5), (5, 7)]
 
 
-def test_page_shift_and_theorem_id_are_stable() -> None:
-    candidate = shift_candidate_pages(_candidate(), 10)
-    assert candidate.source_anchor.page_start == 11
-    assert theorem_id("book", candidate) == theorem_id("book", candidate)
+def test_gemini_schema_is_transcription_only() -> None:
+    assert set(ChunkMarkdown.model_fields) == {"pages"}
+    assert set(PageMarkdown.model_fields) == {
+        "page_number",
+        "markdown",
+        "confidence",
+        "warnings",
+    }
 
 
-def test_pipeline_writes_agent_contract(tmp_path: Path) -> None:
-    pdf = _pdf(tmp_path / "book.pdf", 1)
-    output = tmp_path / "outputs"
-    result = ExtractionPipeline(FakeExtractor()).run(
+def test_pipeline_writes_markdown_chunks_with_original_page_numbers(tmp_path: Path) -> None:
+    pdf = _pdf(tmp_path / "book.pdf", 3)
+    result = MarkdownPipeline(FakeExtractor()).run(
         pdf,
-        output,
+        tmp_path / "outputs",
         document_id="My Book",
-        pages_per_chunk=1,
-        overlap_pages=0,
+        pages_per_chunk=2,
+        overlap_pages=1,
         source_page_offset=14,
     )
     assert result.document_id == "my-book"
-    assert len(result.theorem_ids) == 1
-    extraction = output / result.theorem_ids[0] / "extraction"
-    latest = json.loads((extraction / "latest.json").read_text(encoding="utf-8"))
-    attempt = extraction / latest["attempt"]
-    theorem = json.loads((attempt / "theorem.json").read_text(encoding="utf-8"))
-    assert theorem["theorem_id"] == result.theorem_ids[0]
-    assert theorem["source_anchor"]["page_start"] == 15
-    assert (attempt / "context.md").is_file()
-    assert (attempt / "source.txt").is_file()
+    assert len(result.chunk_files) == 2
+    assert result.run_dir.parent.name == "my-book"
+    assert result.run_dir.parent.parent.name == "outputs"
+    first = result.chunk_files[0].read_text(encoding="utf-8")
+    assert "PDF page 15" in first
+    assert "PDF page 16" in first
+    assert "theorem_id" not in first
+    manifest = json.loads((result.run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["model"] == "fake-markdown-model"
+    assert manifest["chunks"][1]["pdf_page_start"] == 16
+    assert set(manifest) >= {"source_pdf_sha256", "chunks", "overlap_pages"}
+
+
+class MissingPageExtractor(FakeExtractor):
+    def extract(self, pdf_path: Path, prompt: str) -> ChunkMarkdown:
+        return ChunkMarkdown(
+            pages=[PageMarkdown(page_number=1, markdown="page", confidence=1)],
+        )
+
+
+def test_pipeline_rejects_missing_page_transcription(tmp_path: Path) -> None:
+    pdf = _pdf(tmp_path / "book.pdf", 2)
+    with pytest.raises(ValueError, match="expected"):
+        MarkdownPipeline(MissingPageExtractor()).run(
+            pdf,
+            tmp_path / "outputs",
+            document_id="book",
+            pages_per_chunk=2,
+            overlap_pages=0,
+        )

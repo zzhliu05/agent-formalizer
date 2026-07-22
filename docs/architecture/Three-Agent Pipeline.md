@@ -23,7 +23,29 @@ Each theorem receives a stable `theorem_id`. Every downstream artifact must reta
 
 ## Agent 1 — PDF OCR and Theorem Extraction
 
-### Responsibilities
+### Current milestone: Markdown transcription only
+
+Gemini currently performs only page-faithful PDF-to-Markdown conversion. It must not classify theorem records, infer prerequisites, assign theorem IDs, or emit formalization packages. The theorem/context extraction responsibilities below are deferred to a later internal stage of Agent 1 after the OCR corpus and its quality have been evaluated.
+
+The active output contract is:
+
+```text
+outputs/ocr/<document_id>/<run_id>/
+  manifest.json
+  chunks/
+    chunk-NNNN-pages-PPPPP-QQQQQ.md
+```
+
+Each Markdown chunk carries original PDF page anchors, OCR confidence, warnings, and overlapping boundary pages when configured. Downstream stages must treat these files as transcriptions, not verified mathematical interpretations.
+
+Agent 1 therefore has two internal stages without creating an additional project agent:
+
+1. **Active OCR stage:** Gemini converts PDF chunks to Markdown only.
+2. **Deferred extraction stage:** a separately selected model API will convert Markdown chunks into theorem/context packages.
+
+The Gemini adapter must never receive the theorem extraction schema or prompts.
+
+### Deferred responsibilities for the future extractor
 
 - Read textbook PDFs with OCR when embedded text is missing or unreliable.
 - Detect theorem-like units, including definitions, lemmas, propositions, corollaries, exercises promoted as claims, and named results.
@@ -36,9 +58,9 @@ Each theorem receives a stable `theorem_id`. Every downstream artifact must reta
   - unresolved OCR ambiguities and confidence.
 - Distinguish quoted source text from reconstructed or inferred context.
 
-### Output contract
+### Deferred theorem extraction output contract
 
-Write immutable attempts under `outputs/pipeline/<theorem_id>/extraction/attempt-NNN/` containing:
+When theorem extraction is re-enabled with a separately approved extractor, write immutable attempts under `outputs/pipeline/<theorem_id>/extraction/attempt-NNN/` containing:
 
 - `theorem.json`: identifier, source anchors, normalized statement, assumptions, variables, conclusion, dependencies, and OCR confidence;
 - `context.md`: readable source context, prerequisite explanations, notation map, and ambiguity notes;

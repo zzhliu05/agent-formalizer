@@ -1,12 +1,14 @@
 ---
 type: note
-status: active
+status: superseded
 created: 2026-07-22
 updated: 2026-07-22
 process: P001
 ---
 
 # Folland OCR Smoke Test
+
+> Historical note: this test includes an experimental Gemini theorem-recovery path. The current Agent 1 milestone supersedes that behavior and uses Gemini only for PDF-to-Markdown transcription.
 
 ## Scope
 
