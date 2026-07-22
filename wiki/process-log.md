@@ -9,6 +9,14 @@ updated: 2026-07-22
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
 
+## 2026-07-22 - Markdown-only OCR Test Completed
+
+Status: active
+Process: P001
+Links: [[../notes/2026-07-22 Markdown-only OCR Test]] - [[../code/agents/extraction/README]]
+Summary: Converted Folland PDF pages 19–21 into one page-anchored Markdown chunk with no theorem extraction fields. Visual QA found faithful overall transcription and one math-delimiter formatting defect that was not reflected in the model confidence.
+Next: Add deterministic Markdown/math delimiter checks before expanding the OCR sample.
+
 ## 2026-07-22 - Agent 1 Narrowed to Markdown OCR
 
 Status: active
