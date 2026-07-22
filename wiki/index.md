@@ -15,7 +15,7 @@ This is the navigational map for the project. Start here after reading the newes
 
 ## Active Processes
 
-No active research processes yet. When a new research process starts, assign the next simple process ID, such as `P001`, and add a compact entry here if it helps navigation.
+- P001 — [[../docs/architecture/Three-Agent Pipeline|Three-Agent Formalization Pipeline]]: define and implement the PDF-to-Lean workflow across extraction, formalization, and independent review.
 
 ## Wiki Areas
 
@@ -35,4 +35,4 @@ No active research processes yet. When a new research process starts, assign the
 
 ## Current Status
 
-The vault scaffold and project-local prompt-hook files are initialized. The first active task is to begin adding sources, notes, and topic pages as the project develops.
+The vault scaffold is initialized and P001 defines the first three-agent architecture. Implementation can proceed agent by agent while preserving the shared artifact contracts and review gate.

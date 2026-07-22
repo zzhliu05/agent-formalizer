@@ -9,6 +9,14 @@ updated: 2026-07-22
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
 
+## 2026-07-22 - Three-Agent Pipeline Defined
+
+Status: active
+Process: P001
+Links: [[../docs/architecture/Three-Agent Pipeline]] - [[index]]
+Summary: Split the initial system into PDF OCR/context extraction, Lean formalization through Harmonic Aristotle, and independent semantic/formal review. Defined artifact handoffs, revision routing, and the no-`sorryAx` acceptance gate.
+Next: Choose the first textbook PDF and implement the Agent 1 extraction contract.
+
 ## 2026-07-22 - GitHub Repository Published
 
 Status: resolved
