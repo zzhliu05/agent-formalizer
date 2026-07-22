@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .codex/hooks/vault_context_reminder.py",
+            "timeout": 5,
+            "statusMessage": "Applying vault context reminder"
+          }
+        ]
+      }
+    ]
+  }
+}
