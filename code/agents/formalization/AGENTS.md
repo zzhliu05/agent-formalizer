@@ -10,6 +10,12 @@ Translate a complete extraction package into Lean 4 + Mathlib and use the Harmon
 
 - Record all material choices made while mapping textbook concepts to Mathlib.
 - Keep API credentials outside the repository and sanitize saved request metadata.
+- Provide Aristotle credentials through the `ARISTOTLE_API_KEY` process
+  environment. Do not use the CLI `--api-key` option because command lines may
+  be retained in shell history or process logs.
+- Invoke Aristotle for project work as `uv run --locked aristotle ...` from
+  this directory, or with an explicit `--project` path. Do not depend on the
+  globally installed CLI for reproducible Agent 2 runs.
 - Use the current official Aristotle API contract; do not invent endpoints or fields.
 - Compile locally before handoff.
 - Temporary placeholders are permitted only during work; they disqualify the review bundle.

@@ -2,12 +2,52 @@
 type: process-log
 status: active
 created: 2026-07-22
-updated: 2026-07-23
+updated: 2026-07-24
 ---
 
 # Process Log
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
+
+## 2026-07-24 - Agent 2 Aristotle Preparation Implemented
+
+Status: active
+Process: P001
+Links: [[../notes/2026-07-24 Agent 2 Aristotle Preparation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: Implemented strict Agent 1 theorem-package reading, immutable pointer/hash validation, proof-target safety gates, and offline generation of an Aristotle `submit --project-dir` prompt plus a pinned Lean project. Eight tests pass, and a private Folland proposition with a partial printed proof produced a sanitized preparation bundle without a remote submission.
+Next: Implement authenticated submission, task polling/download, local compilation of the returned proof, prohibited-placeholder checks, and formalization handoff to Agent 3.
+
+## 2026-07-24 - Aristotle Authentication Validated
+
+Status: active
+Process: P001
+Links: [[../notes/2026-07-24 Aristotle Authentication Smoke Test]] - [[../notes/2026-07-24 Project-Isolated Aristotle CLI]] - [[../code/agents/formalization/README]]
+Summary: Ran the locked Agent 2 CLI against Aristotle with a process-only credential; the read-only project-list request returned successfully with exit code zero, and no key or proof artifact was persisted.
+Next: Submit one minimal theorem fixture, wait for and download the result into an ignored private-test directory, compile it locally, and reject any `sorry`, `admit`, or `sorryAx`.
+
+## 2026-07-24 - Aristotle CLI Isolated in Agent 2
+
+Status: active
+Process: P001
+Links: [[../notes/2026-07-24 Project-Isolated Aristotle CLI]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: Added a project-level `pyproject.toml` and `uv.lock` pinning `aristotlelib 2.1.0`, created the ignored `.venv`, and validated that `uv run --locked aristotle` resolves the project executable rather than relying on the global tool.
+Next: Inject `ARISTOTLE_API_KEY` at runtime and perform a minimal authenticated smoke test through the locked CLI before implementing the Agent 2 adapter.
+
+## 2026-07-24 - Aristotle CLI Installed
+
+Status: active
+Process: P001
+Links: [[../notes/2026-07-24 Aristotle CLI Setup]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: Installed `aristotlelib 2.1.0` globally through `uv`, verified the CLI executable, version, top-level help, and formalize/submit contracts, and established `ARISTOTLE_API_KEY` as the credential boundary without storing or testing a key.
+Next: Inject a user-provided key through the process environment and run a minimal authenticated status or submission smoke test before implementing the Agent 2 adapter.
+
+## 2026-07-24 - Agent 2 Lean Environment Validated
+
+Status: active
+Process: P001
+Links: [[../notes/2026-07-24 Agent 2 Lean Environment Setup]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: Pinned Agent 2 to Lean 4.28.0 and Mathlib v4.28.0, completed all 8,010 cache downloads using an E-drive cache after Windows tar-encoding and C-drive space issues, and passed a 504-job narrow-import smoke build.
+Next: Implement the Harmonic Aristotle API adapter from its current official contract, while keeping credentials external and compiling every returned Lean artifact locally.
 
 ## 2026-07-23 - GPT-5.5 Theorem Extraction Test Completed
 

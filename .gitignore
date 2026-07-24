@@ -10,9 +10,15 @@
 **/.pytest_cache/
 *.py[cod]
 
+# Lean/Lake build artifacts
+**/.lake/
+
 # Textbook PDFs may be copyrighted and should be added deliberately.
 raw/textbooks/*.pdf
 
 # Private/local PDF experiments and rendered inspection artifacts
 tmp/
 outputs/private-tests/
+
+# Generated pipeline bundles can contain copyrighted source excerpts.
+outputs/pipeline/

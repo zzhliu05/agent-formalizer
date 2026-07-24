@@ -2,7 +2,7 @@
 type: project-spec
 status: active
 created: 2026-07-22
-updated: 2026-07-23
+updated: 2026-07-24
 ---
 
 # Three-Agent Formalization Pipeline
@@ -76,6 +76,25 @@ Agent 1 must not write Lean code, invent missing proof steps, or silently repair
 
 ## Agent 2 — Lean Formalization
 
+### Current milestone: theorem-package reading and Aristotle task preparation
+
+The local project under `code/agents/formalization/` pins Lean 4.28.0 and
+Mathlib v4.28.0, matching the current Aristotle setup requirement supplied for
+this project. The generated dependency manifest and a narrow-import Mathlib
+smoke test build successfully. Agent 2 pins `aristotlelib 2.1.0` in its
+project-local `pyproject.toml` and `uv.lock`; reproducible runs use
+`uv run --locked aristotle`. A credentialed, read-only project-list request has
+validated authentication and basic live service access.
+
+The offline preparation adapter now reads the immutable Agent 1 package,
+verifies its latest-pointer and companion artifacts, applies formalization
+safety gates, and produces a minimal Lean project plus a prompt for Aristotle's
+`submit --project-dir` contract. It explicitly distinguishes an incomplete
+printed proof from an incomplete theorem statement: the former may be proved
+independently, while the latter is rejected. Remote proof submission, result
+retrieval, compilation of the returned proof, and handoff to Agent 3 are not
+yet implemented.
+
 ### Responsibilities
 
 - Consume only a complete Agent 1 theorem package.
@@ -86,11 +105,32 @@ Agent 1 must not write Lean code, invent missing proof steps, or silently repair
 
 ### Aristotle integration boundary
 
-The concrete endpoint, authentication header, request fields, polling behavior, quotas, and retry rules must be implemented from the current official Aristotle API documentation. They are intentionally not hard-coded in this architecture document. API credentials must come from the runtime environment or a local secret store and must never enter Git, prompts saved in the vault, or output artifacts.
+The current transport boundary is the official `aristotlelib 2.1.0` CLI
+existing-project workflow: a prompt plus a Lean project directory are prepared
+for `aristotle submit <prompt> --project-dir <dir> --wait`. The adapter records
+that command shape without executing it. Authentication remains the
+`ARISTOTLE_API_KEY` process environment variable.
+
+Concrete submission identifiers, polling behavior, quotas, retry rules, and
+download metadata will be recorded from the live CLI responses when the next
+stage is implemented. API credentials must never enter Git, prompts saved in
+the vault, or output artifacts.
 
 ### Output contract
 
-Write the formalization bundle under `outputs/pipeline/<theorem_id>/formalization/`:
+Write immutable preparation attempts under
+`outputs/pipeline/<theorem_id>/formalization/preparation/attempt-NNN/`:
+
+- `request.json`: sanitized input/artifact hashes and Aristotle command shape;
+- `prompt.txt`: exact task instructions for Aristotle;
+- `project/Main.lean`: placeholder-free Lean staging module;
+- `project/SOURCE_THEOREM.md`: statement, prerequisites, proof availability,
+  and source-grounded proof text;
+- `project/FORMALIZATION_NOTES.md`: required interpretation/build record;
+- pinned Lean, Lake, and Mathlib project files.
+
+After remote execution is implemented, write the formalization result bundle
+under `outputs/pipeline/<theorem_id>/formalization/`:
 
 - `Main.lean`: Lean theorem statement and proposed proof;
 - `formalization.md`: mapping choices, imported Mathlib concepts, and known limitations;
@@ -136,5 +176,6 @@ Only Agent 3 can mark a theorem package as accepted.
 ## Official Basis
 
 - [Harmonic Aristotle](https://aristotle.harmonic.fun/) states that Aristotle can receive an English problem or work directly inside a Lean project.
+- [aristotlelib 2.1.0](https://pypi.org/project/aristotlelib/2.1.0/) documents the `submit --project-dir` existing-project workflow used by Agent 2 preparation.
 - [Aristotle technical report](https://harmonic.fun/pdf/Aristotle_IMO_Level_Automated_Theorem_Proving.pdf) treats a result as solved only when Lean 4 + Mathlib verifies a complete proof without gaps or unsound axioms such as `sorryAx`.
 - [Aristotle API Terms](https://aristotle.harmonic.fun/terms) require users to independently review, test, and validate generated output.
