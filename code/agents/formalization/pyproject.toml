@@ -1,6 +1,6 @@
 [project]
 name = "formalization-agent-tools"
-version = "0.2.0"
+version = "0.3.0"
 description = "Project-isolated runtime tools for the Lean formalization agent"
 requires-python = ">=3.11"
 dependencies = [

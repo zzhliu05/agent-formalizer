@@ -9,61 +9,77 @@ updated: 2026-07-24
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
 
-## 2026-07-24 - Agent 2 Live Aristotle Proof Passed
+## 2026-07-24 - Agent 2 Formalized the Canonical Agent 1 Test Corpus
 
 Status: active
+Process: P001
+Links: [[../notes/2026-07-24 Agent 1 Test Corpus Formalization Batch]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: All 20 proof-bearing records in the canonical Agent 1 test corpus reached `ready_for_review` after real Aristotle generation and local Lean 4.28.0 validation; the source axiom 0.4 remains declaration-only. Added archive-preserving local `revalidate` support after controlling a Mathlib memory spike, and a full hash-chain audit passed with no persisted credential.
+Next: Run Agent 3 back-translation, source-statement comparison, placeholder and axiom inspection across all 20 handoffs, prioritizing partial, by-reference, and uncertain source records.
+
+## 2026-07-24 - Agent 1 Test Corpus Batch Formalization Started
+
+Status: resolved
+Process: P001
+Links: [[../notes/2026-07-24 Agent 1 Test Corpus Formalization Batch]] - [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: Deduplicated all Agent 1 private test outputs into 21 canonical GPT-5.5 records covering 0.4–0.24, classified the source axiom 0.4 as declaration-only, and prepared all 20 proof-bearing targets for Agent 2. Seventeen live Aristotle tasks were initially accepted; three capacity-limited submissions remain safe to retry.
+Next: Completed by the newer batch-formalization entry above.
+
+## 2026-07-24 - Agent 2 Live Aristotle Proof Passed
+
+Status: superseded
 Process: P001
 Links: [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
 Summary: Submitted the private Folland Proposition 0.16 package to Aristotle with questions disabled. A transport interruption was recovered through the same Project/Task IDs; the downloaded theorem `folland_real_analysis_0_16` passed protected-file and prohibited-placeholder gates plus local Lean 4.28.0 validation, producing a `ready_for_review` Agent 3 handoff.
-Next: Implement Agent 3 back-translation, independently compare the Lean statement against Agent 1, inspect theorem axioms, and own any semantic questioning or revision loop.
+Next: Superseded by the complete 20-target batch above.
 
 ## 2026-07-24 - Agent 2 First-Candidate Generation Implemented
 
-Status: active
+Status: resolved
 Process: P001
 Links: [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
 Summary: Implemented non-interactive Aristotle submission with agent questions disabled, resumable polling, safe result extraction, protected-input and Lean-placeholder gates, local Lean kernel validation, and an exact Agent 3 handoff. Fifteen tests pass and the production local checker passed against the private Folland preparation.
-Next: Historical implementation milestone; see the newer live-proof entry above.
+Next: Completed and exercised by the newer full-batch entry above.
 
 ## 2026-07-24 - Agent 2 Aristotle Preparation Implemented
 
-Status: active
+Status: resolved
 Process: P001
 Links: [[../notes/2026-07-24 Agent 2 Aristotle Preparation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
 Summary: Implemented strict Agent 1 theorem-package reading, immutable pointer/hash validation, proof-target safety gates, and offline generation of an Aristotle `submit --project-dir` prompt plus a pinned Lean project. Eight tests pass, and a private Folland proposition with a partial printed proof produced a sanitized preparation bundle without a remote submission.
-Next: Implement authenticated submission, task polling/download, local compilation of the returned proof, prohibited-placeholder checks, and formalization handoff to Agent 3.
+Next: Completed by the later first-candidate and full-batch milestones above.
 
 ## 2026-07-24 - Aristotle Authentication Validated
 
-Status: active
+Status: resolved
 Process: P001
 Links: [[../notes/2026-07-24 Aristotle Authentication Smoke Test]] - [[../notes/2026-07-24 Project-Isolated Aristotle CLI]] - [[../code/agents/formalization/README]]
 Summary: Ran the locked Agent 2 CLI against Aristotle with a process-only credential; the read-only project-list request returned successfully with exit code zero, and no key or proof artifact was persisted.
-Next: Submit one minimal theorem fixture, wait for and download the result into an ignored private-test directory, compile it locally, and reject any `sorry`, `admit`, or `sorryAx`.
+Next: Completed by the later live-proof and full-batch milestones above.
 
 ## 2026-07-24 - Aristotle CLI Isolated in Agent 2
 
-Status: active
+Status: resolved
 Process: P001
 Links: [[../notes/2026-07-24 Project-Isolated Aristotle CLI]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
 Summary: Added a project-level `pyproject.toml` and `uv.lock` pinning `aristotlelib 2.1.0`, created the ignored `.venv`, and validated that `uv run --locked aristotle` resolves the project executable rather than relying on the global tool.
-Next: Inject `ARISTOTLE_API_KEY` at runtime and perform a minimal authenticated smoke test through the locked CLI before implementing the Agent 2 adapter.
+Next: Completed by the later authentication and generation milestones above.
 
 ## 2026-07-24 - Aristotle CLI Installed
 
-Status: active
+Status: resolved
 Process: P001
 Links: [[../notes/2026-07-24 Aristotle CLI Setup]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
 Summary: Installed `aristotlelib 2.1.0` globally through `uv`, verified the CLI executable, version, top-level help, and formalize/submit contracts, and established `ARISTOTLE_API_KEY` as the credential boundary without storing or testing a key.
-Next: Inject a user-provided key through the process environment and run a minimal authenticated status or submission smoke test before implementing the Agent 2 adapter.
+Next: Completed by the later project-isolated authentication milestone above.
 
 ## 2026-07-24 - Agent 2 Lean Environment Validated
 
-Status: active
+Status: resolved
 Process: P001
 Links: [[../notes/2026-07-24 Agent 2 Lean Environment Setup]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
 Summary: Pinned Agent 2 to Lean 4.28.0 and Mathlib v4.28.0, completed all 8,010 cache downloads using an E-drive cache after Windows tar-encoding and C-drive space issues, and passed a 504-job narrow-import smoke build.
-Next: Implement the Harmonic Aristotle API adapter from its current official contract, while keeping credentials external and compiling every returned Lean artifact locally.
+Next: Completed by the later Agent 2 generation milestones above.
 
 ## 2026-07-23 - GPT-5.5 Theorem Extraction Test Completed
 

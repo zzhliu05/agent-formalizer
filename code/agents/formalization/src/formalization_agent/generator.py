@@ -279,6 +279,27 @@ async def _finish_terminal_run(
     run["updated_at"] = _now()
     _write_json_atomic(run_dir / "run.json", run)
 
+    return _complete_local_validation(
+        preparation,
+        generation_root,
+        run_dir,
+        run,
+        template_root,
+        build_timeout_seconds,
+        build_runner,
+    )
+
+
+def _complete_local_validation(
+    preparation: LoadedPreparation,
+    generation_root: Path,
+    run_dir: Path,
+    run: dict[str, Any],
+    template_root: Path,
+    build_timeout_seconds: int,
+    build_runner: BuildRunner,
+) -> GenerationResult:
+    extracted_root = run_dir / "result"
     validation = validate_candidate(
         extracted_root,
         preparation.project_dir,
@@ -309,8 +330,8 @@ async def _finish_terminal_run(
         "created_at": _now(),
         "agent2_run": {
             "run_json": "run.json",
-            "project_id": snapshot.project_id,
-            "task_id": snapshot.task_id,
+            "project_id": run["aristotle"]["project_id"],
+            "task_id": run["aristotle"]["task_id"],
         },
         "source": {
             "preparation_request_sha256": preparation.request_sha256,
@@ -336,8 +357,8 @@ async def _finish_terminal_run(
         preparation.theorem_id,
         "ready_for_review",
         run_dir,
-        snapshot.project_id,
-        snapshot.task_id,
+        run["aristotle"]["project_id"],
+        run["aristotle"]["task_id"],
         handoff_path,
     )
     _finalize_latest(generation_root, result)
@@ -405,6 +426,98 @@ def _load_existing_run(
     if preparation.theorem_id != run.get("theorem_id"):
         raise GenerationError("generation theorem_id does not match preparation")
     return generation_root, run_dir, run, preparation
+
+
+def revalidate_generation(
+    run_input: str | Path,
+    *,
+    template_root: str | Path,
+    build_timeout_seconds: int = 1800,
+    build_runner: BuildRunner = run_local_lean_check,
+) -> GenerationResult:
+    """Repeat only the local validation gates for an already downloaded result."""
+
+    generation_root, run_dir, run, preparation = _load_existing_run(run_input)
+    source_state = run.get("state")
+    if source_state not in {"downloaded", "validation_failed"}:
+        raise GenerationError(
+            f"generation state '{source_state}' has no downloaded candidate to revalidate",
+            run_dir,
+        )
+    if run.get("aristotle", {}).get("task_status") != "COMPLETE":
+        raise GenerationError(
+            "only a remotely COMPLETE generation can be revalidated", run_dir
+        )
+    result_metadata = run.get("result")
+    if not isinstance(result_metadata, dict):
+        raise GenerationError("generation run has no downloaded result metadata", run_dir)
+    if result_metadata.get("archive") != "result.tar.gz":
+        raise GenerationError("generation result archive reference is invalid", run_dir)
+    archive_path = run_dir / "result.tar.gz"
+    extracted_root = run_dir / "result"
+    if not archive_path.is_file() or not extracted_root.is_dir():
+        raise GenerationError("downloaded result files are missing", run_dir)
+    if result_metadata.get("archive_sha256") != sha256_bytes(archive_path.read_bytes()):
+        raise GenerationError("downloaded result archive hash no longer matches", run_dir)
+    if result_metadata.get("archive_size_bytes") != archive_path.stat().st_size:
+        raise GenerationError("downloaded result archive size no longer matches", run_dir)
+
+    validation_history = run.setdefault("validation_history", [])
+    validation_attempt = {
+        "attempt": len(validation_history) + 1,
+        "started_at": _now(),
+        "source_state": source_state,
+        "outcome": "running",
+    }
+    validation_history.append(validation_attempt)
+    previous_build = run_dir / "build.log"
+    if previous_build.is_file():
+        archived_build = run_dir / (
+            f"build.before-revalidation-{validation_attempt['attempt']:03d}.log"
+        )
+        if archived_build.exists():
+            raise GenerationError(
+                f"immutable archived build log already exists: {archived_build}",
+                run_dir,
+            )
+        archived_build.write_bytes(previous_build.read_bytes())
+    run["state"] = "downloaded"
+    run["error"] = None
+    run["updated_at"] = _now()
+    _write_json_atomic(run_dir / "run.json", run)
+
+    try:
+        completed = _complete_local_validation(
+            preparation,
+            generation_root,
+            run_dir,
+            run,
+            Path(template_root).resolve(),
+            build_timeout_seconds,
+            build_runner,
+        )
+        validation_attempt["finished_at"] = _now()
+        validation_attempt["outcome"] = "passed"
+        run["updated_at"] = _now()
+        _write_json_atomic(run_dir / "run.json", run)
+        _finalize_latest(generation_root, completed)
+        return completed
+    except CandidateValidationError as exc:
+        if exc.build is not None:
+            _write_build_log(run_dir / "build.log", exc.build)
+        validation_attempt["finished_at"] = _now()
+        validation_attempt["outcome"] = "failed"
+        _record_error(run_dir, run, "validation_failed", exc)
+        failed = GenerationResult(
+            preparation.theorem_id,
+            "validation_failed",
+            run_dir,
+            run["aristotle"]["project_id"],
+            run["aristotle"]["task_id"],
+            None,
+        )
+        _finalize_latest(generation_root, failed)
+        return failed
 
 
 async def generate_proof(

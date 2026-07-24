@@ -26,6 +26,7 @@ from formalization_agent.candidate_validation import (
 from formalization_agent.generator import (
     GenerationError,
     generate_proof,
+    revalidate_generation,
     resume_generation,
 )
 from formalization_agent.preparation_reader import (
@@ -343,6 +344,66 @@ class GenerationTests(unittest.TestCase):
                 "resuming must not create a second Aristotle project",
             )
             self.assertEqual(second_transport.submit_calls, 0)
+
+    def test_failed_local_validation_can_be_retried_without_resubmission(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, extraction = _write_package(root / "input", _valid_payload())
+            prepared = prepare_formalization(
+                extraction,
+                output_root=root / "output",
+                template_root=FORMALIZATION_ROOT,
+            )
+            archive_path = root / "fixture-result.tar.gz"
+            _result_archive(prepared.project_dir, archive_path)
+            transport = FakeTransport(archive_path.read_bytes())
+
+            def interrupted_build(
+                project_root: Path,
+                main_path: Path,
+                template_root: Path,
+                timeout_seconds: int,
+            ) -> BuildOutcome:
+                del project_root, main_path, template_root, timeout_seconds
+                return BuildOutcome(
+                    command=["lean", "Main.lean"],
+                    exit_code=4294967295,
+                    timed_out=False,
+                    duration_seconds=0.01,
+                    stdout="",
+                    stderr="",
+                )
+
+            first = asyncio.run(
+                generate_proof(
+                    prepared.attempt_dir,
+                    template_root=FORMALIZATION_ROOT,
+                    generation_root=root / "generation",
+                    poll_seconds=0,
+                    timeout_seconds=10,
+                    build_timeout_seconds=10,
+                    transport=transport,
+                    build_runner=interrupted_build,
+                )
+            )
+            self.assertEqual(first.state, "validation_failed")
+
+            retried = revalidate_generation(
+                first.run_dir,
+                template_root=FORMALIZATION_ROOT,
+                build_timeout_seconds=10,
+                build_runner=_successful_build,
+            )
+            self.assertEqual(retried.state, "ready_for_review")
+            self.assertEqual(transport.submit_calls, 1)
+            self.assertEqual(transport.download_calls, 1)
+            run = json.loads(
+                (retried.run_dir / "run.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(run["validation_history"][-1]["outcome"], "passed")
+            self.assertTrue(
+                (retried.run_dir / "build.before-revalidation-001.log").is_file()
+            )
 
 
 if __name__ == "__main__":

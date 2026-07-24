@@ -87,6 +87,21 @@ uv run --locked formalization-agent resume `
   "<generation-attempt-or-latest.json>"
 ```
 
+If a candidate was already downloaded but its local Lean process was
+interrupted or exhausted local resources, repeat only the mechanical local
+gates without resubmitting to Aristotle:
+
+```powershell
+uv run --locked formalization-agent revalidate `
+  "<generation-attempt-or-latest.json>"
+```
+
+`revalidate` accepts only a remotely `COMPLETE` run in `downloaded` or
+`validation_failed` state. It verifies the saved result archive hash and size,
+reruns protected-file and placeholder scans, reruns the pinned Lean kernel
+check, and preserves the previous build log before writing a new Agent 3
+handoff.
+
 Generation artifacts are append-only by attempt:
 
 ```text

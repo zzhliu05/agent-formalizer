@@ -6,7 +6,12 @@ import json
 import sys
 from pathlib import Path
 
-from .generator import GenerationError, generate_proof, resume_generation
+from .generator import (
+    GenerationError,
+    generate_proof,
+    resume_generation,
+    revalidate_generation,
+)
 from .preparer import (
     PreparationError,
     PreparationPolicy,
@@ -124,6 +129,23 @@ def _parser() -> argparse.ArgumentParser:
     resume_parser.add_argument("--poll-seconds", type=float, default=30.0)
     resume_parser.add_argument("--timeout-seconds", type=float, default=7200.0)
     resume_parser.add_argument("--build-timeout-seconds", type=int, default=1800)
+
+    revalidate_parser = subparsers.add_parser(
+        "revalidate",
+        help="Repeat local Lean validation for an already downloaded candidate.",
+    )
+    revalidate_parser.add_argument(
+        "input",
+        type=Path,
+        help="run.json, generation attempt directory, or generation/latest.json",
+    )
+    revalidate_parser.add_argument(
+        "--template-root",
+        type=Path,
+        default=_default_template_root(),
+        help="Pinned Agent 2 Lean project used for local kernel validation.",
+    )
+    revalidate_parser.add_argument("--build-timeout-seconds", type=int, default=1800)
     return parser
 
 
@@ -195,7 +217,7 @@ def main(argv: list[str] | None = None) -> int:
             }
             if generated.state != "ready_for_review":
                 exit_code = 3
-        else:
+        elif args.command == "resume":
             generated = asyncio.run(
                 resume_generation(
                     args.input,
@@ -214,6 +236,26 @@ def main(argv: list[str] | None = None) -> int:
                 "handoff_path": (
                     str(generated.handoff_path) if generated.handoff_path else None
                 ),
+                "questioning_loop_owner": "agent3",
+            }
+            if generated.state != "ready_for_review":
+                exit_code = 3
+        else:
+            generated = revalidate_generation(
+                args.input,
+                template_root=args.template_root,
+                build_timeout_seconds=args.build_timeout_seconds,
+            )
+            payload = {
+                "theorem_id": generated.theorem_id,
+                "state": generated.state,
+                "run_dir": str(generated.run_dir),
+                "project_id": generated.project_id,
+                "task_id": generated.task_id,
+                "handoff_path": (
+                    str(generated.handoff_path) if generated.handoff_path else None
+                ),
+                "remote_resubmitted": False,
                 "questioning_loop_owner": "agent3",
             }
             if generated.state != "ready_for_review":
