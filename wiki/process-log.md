@@ -2,12 +2,20 @@
 type: process-log
 status: active
 created: 2026-07-22
-updated: 2026-07-24
+updated: 2026-07-25
 ---
 
 # Process Log
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
+
+## 2026-07-25 - Agent 3 Review and Revision Loop Implemented
+
+Status: active
+Process: P001
+Links: [[../notes/2026-07-25 Agent 3 Review Loop]] - [[../code/agents/review/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: Implemented an isolated Lean-only back-translation stage, delayed source comparison, independent build/placeholder/axiom gates, structured revision requests, Agent 3 Aristotle follow-ups, and Agent 2 validation of revised archives. A real Folland Proposition 0.6 cycle rejected a mechanically valid but method-mismatched proof, revised it through Aristotle, revalidated it in Agent 2, and accepted the fresh Agent 3 review with no placeholders or unapproved axioms.
+Next: Review the remaining 19 proof-bearing Folland handoffs; route incomplete source-proof evidence to Agent 1 and run complete-source mismatches through the revision loop.
 
 ## 2026-07-24 - Agent 2 Formalized the Canonical Agent 1 Test Corpus
 

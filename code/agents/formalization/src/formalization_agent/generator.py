@@ -351,6 +351,8 @@ def _complete_local_validation(
             "semantic_verdict": "pending",
         },
     }
+    if isinstance(run.get("revision"), dict):
+        handoff["revision"] = run["revision"]
     handoff_path = run_dir / "handoff.json"
     _write_json_atomic(handoff_path, handoff)
     result = GenerationResult(

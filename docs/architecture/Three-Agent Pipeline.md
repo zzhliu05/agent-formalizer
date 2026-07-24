@@ -2,7 +2,7 @@
 type: project-spec
 status: active
 created: 2026-07-22
-updated: 2026-07-24
+updated: 2026-07-25
 ---
 
 # Three-Agent Formalization Pipeline
@@ -151,31 +151,65 @@ Agent 2 may use temporary `sorry` placeholders while working, but a bundle conta
 
 ### Responsibilities
 
+The implementation under `code/agents/review/` separates review into two
+model calls. The first call receives only Lean sources, declaration names, and
+the independent axiom-audit output. Its natural-language statement and proof
+reconstruction is saved before the second stage is allowed to open Agent 1's
+source package. Agent 2 prose is excluded from both stages.
+
+The second call checks both semantic statement equivalence and exact
+proof-method correspondence. Exact method agreement is accepted only when
+Agent 1 marks the printed proof `complete`; incomplete source proof evidence is
+routed to `needs_reextraction`.
+
 - Treat the original Agent 1 package and Agent 2 Lean bundle as independent inputs.
-- Translate the Lean theorem statement back into natural mathematical language without consulting Agent 2's prose explanation first.
+- Translate the Lean theorem statement and complete proof back into natural
+  mathematical language using only Lean as input.
 - Compare the translation against the source theorem, checking:
   - quantifiers, variable domains, hypotheses, and conclusion;
   - implication direction and logical strength;
   - boundary conditions, exceptional cases, and uniqueness/existence claims;
   - definitions or typeclass assumptions that change the intended meaning.
 - Run the Lean project build and reject any compilation failure.
-- Statically reject `sorry`, `admit`, and explicit `sorryAx` occurrences in submitted Lean sources.
-- Inspect the accepted theorem's axioms and reject any dependency on `sorryAx`; record any other nonstandard axioms for explicit review.
+- Statically reject `sorry`, `admit`, and explicit `sorryAx` occurrences across
+  every submitted Lean source, including helper lemmas.
+- Reject candidate-introduced `axiom`, `constant`, and `opaque` declarations.
+- Run `#print axioms` for every theorem or lemma and reject `sorryAx` or an
+  axiom outside the approved Lean/Mathlib baseline.
 - Never modify the candidate proof while auditing it.
 - Own the post-handoff questioning loop. Agent 3 may use the recorded
-  Aristotle project to ask about an interpretation or issue a revision
-  instruction; any revised candidate must pass Agent 2's mechanical gates
-  before another semantic verdict.
+  Aristotle project to issue a structured revision instruction through
+  `Project.ask` with questions disabled. Any revised archive must pass Agent
+  2's protected-file, placeholder, declaration, and Lean-build gates as a new
+  generation attempt before another isolated Agent 3 verdict.
 
 ### Output contract and routing
 
-Write `outputs/pipeline/<theorem_id>/review/review.md` with the back-translation, comparison table, build result, axiom result, issues, and exactly one verdict:
+Write immutable attempts under
+`outputs/pipeline/<theorem_id>/review/attempt-NNN/`. Each attempt contains the
+Lean-only input, frozen back-translation, independent mechanical/axiom logs,
+source comparison, review summary, and-when rejected-a hash-bound
+`revision_request.json`.
+
+Emit exactly one verdict:
 
 - `accepted`: semantics match, Lean builds, and no prohibited placeholders or `sorryAx` dependency exists;
 - `needs_reformalization`: source extraction is adequate but the Lean statement/proof is wrong or incomplete; route to Agent 2;
 - `needs_reextraction`: the source statement or prerequisite context is missing or ambiguous; route to Agent 1.
 
 Only Agent 3 can mark a theorem package as accepted.
+
+The executable loop is:
+
+```text
+Agent 2 ready_for_review
+  -> Agent 3 independent audit and blind Lean back-translation
+  -> accepted / needs_reextraction
+     or needs_reformalization
+  -> Agent 3 Aristotle revision
+  -> Agent 2 validates the returned archive as a new attempt
+  -> Agent 3 starts a fresh isolated review
+```
 
 ## Shared State and Failure Policy
 

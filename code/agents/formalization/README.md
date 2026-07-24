@@ -136,6 +136,29 @@ questioning loop to Agent 3. Agent 3 may later ask questions or request a
 revision, but every revised candidate must return through Agent 2's mechanical
 validation before review.
 
+## Validate an Agent 3 revision
+
+Agent 3 owns `Project.ask` follow-ups and emits a hash-bound
+`revision_request.json`. Agent 2 owns the returned archive validation through
+`validate_revision_archive`; it does not construct or send the revision
+prompt. The validator:
+
+- verifies the revision theorem and Aristotle project against the reviewed
+  parent handoff;
+- creates a new append-only generation attempt;
+- safely extracts the returned archive;
+- reruns protected-file, placeholder, declaration, and pinned Lean build
+  gates; and
+- emits a new `handoff.json` containing the Agent 3 revision provenance.
+
+This keeps the loop boundary explicit:
+
+```text
+Agent 3 revision request and Aristotle follow-up
+  -> Agent 2 archive validation
+  -> new Agent 3 review
+```
+
 The production path was validated on Folland Proposition 0.16. A network
 interruption during polling was resumed against the same Aristotle project and
 task; the returned theorem passed local Lean 4.28.0 validation and produced a

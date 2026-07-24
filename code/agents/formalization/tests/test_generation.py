@@ -34,6 +34,7 @@ from formalization_agent.preparation_reader import (
     load_preparation,
 )
 from formalization_agent.preparer import prepare_formalization
+from formalization_agent.revision_validation import validate_revision_archive
 
 from test_preparation import FORMALIZATION_ROOT, _valid_payload, _write_package
 
@@ -403,6 +404,109 @@ class GenerationTests(unittest.TestCase):
             self.assertEqual(run["validation_history"][-1]["outcome"], "passed")
             self.assertTrue(
                 (retried.run_dir / "build.before-revalidation-001.log").is_file()
+            )
+
+    def test_agent3_revision_archive_becomes_a_new_validated_attempt(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, extraction = _write_package(root / "input", _valid_payload())
+            prepared = prepare_formalization(
+                extraction,
+                output_root=root / "output",
+                template_root=FORMALIZATION_ROOT,
+            )
+            archive_path = root / "fixture-result.tar.gz"
+            _result_archive(prepared.project_dir, archive_path)
+            original = asyncio.run(
+                generate_proof(
+                    prepared.attempt_dir,
+                    template_root=FORMALIZATION_ROOT,
+                    generation_root=root / "generation",
+                    poll_seconds=0,
+                    timeout_seconds=10,
+                    build_timeout_seconds=10,
+                    transport=FakeTransport(archive_path.read_bytes()),
+                    build_runner=_successful_build,
+                )
+            )
+            self.assertEqual(original.state, "ready_for_review")
+
+            review_dir = root / "review" / "attempt-001"
+            review_dir.mkdir(parents=True)
+            review_bytes = (
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "theorem_id": prepared.theorem_id,
+                        "attempt": 1,
+                        "verdict": "needs_reformalization",
+                    },
+                    indent=2,
+                    sort_keys=True,
+                )
+                + "\n"
+            ).encode()
+            (review_dir / "review.json").write_bytes(review_bytes)
+            handoff_payload = json.loads(
+                original.handoff_path.read_text(encoding="utf-8")
+            )
+            main_hash = handoff_payload["candidate"]["lean_file_hashes"][
+                "Main.lean"
+            ]
+            prepared_request = load_preparation(prepared.attempt_dir).request
+            revision_request = review_dir / "revision_request.json"
+            revision_request.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "1.0",
+                        "theorem_id": prepared.theorem_id,
+                        "review_attempt": 1,
+                        "review_json_sha256": hashlib.sha256(
+                            review_bytes
+                        ).hexdigest(),
+                        "source_theorem_json_sha256": prepared_request[
+                            "input"
+                        ]["theorem_json_sha256"],
+                        "candidate_main_sha256": main_hash,
+                        "current_project_id": "project-1",
+                        "current_task_id": "task-1",
+                        "issues": [{"code": "proof_method_mismatch"}],
+                        "instructions": ["Use the source proof method."],
+                        "constraints": ["Do not use sorry."],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            revised = validate_revision_archive(
+                original.run_dir,
+                revision_request,
+                archive_path,
+                project_id="project-1",
+                task_id="revision-task-1",
+                template_root=FORMALIZATION_ROOT,
+                build_timeout_seconds=10,
+                build_runner=_successful_build,
+            )
+
+            self.assertEqual(revised.generation.state, "ready_for_review")
+            self.assertEqual(revised.generation.run_dir.name, "attempt-002")
+            run = json.loads(
+                (revised.generation.run_dir / "run.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(run["revision"]["owner"], "agent3")
+            self.assertEqual(
+                run["revision"]["revision_request_sha256"],
+                revised.revision_request_sha256,
+            )
+            handoff = json.loads(
+                revised.generation.handoff_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(handoff["revision"]["owner"], "agent3")
+            self.assertEqual(
+                handoff["agent2_run"]["task_id"], "revision-task-1"
             )
 
 

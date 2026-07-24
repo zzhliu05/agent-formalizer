@@ -1,0 +1,23 @@
+[project]
+name = "formal-math-review-agent"
+version = "0.1.0"
+description = "Independent Lean audit, blind back-translation, and semantic revision loop"
+requires-python = ">=3.11"
+dependencies = [
+    "formalization-agent-tools",
+    "httpx>=0.27,<1",
+    "pydantic>=2.13,<3",
+]
+
+[project.scripts]
+review-agent = "review_agent.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/review_agent"]
+
+[tool.uv.sources]
+formalization-agent-tools = { path = "../formalization", editable = true }

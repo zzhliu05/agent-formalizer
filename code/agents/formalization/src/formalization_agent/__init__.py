@@ -7,6 +7,10 @@ from .generator import (
     revalidate_generation,
 )
 from .preparer import PreparationPolicy, PreparationResult, prepare_formalization
+from .revision_validation import (
+    RevisionValidationResult,
+    validate_revision_archive,
+)
 from .preparation_reader import LoadedPreparation, load_preparation
 from .reader import LoadedTheoremPackage, PackageReadError, load_theorem_package
 
@@ -23,6 +27,8 @@ __all__ = [
     "prepare_formalization",
     "resume_generation",
     "revalidate_generation",
+    "RevisionValidationResult",
+    "validate_revision_archive",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.4.0"
