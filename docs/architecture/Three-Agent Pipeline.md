@@ -95,9 +95,10 @@ local timeout, downloads and safely extracts the result, checks protected
 inputs and prohibited placeholders, performs local Lean kernel validation, and
 writes the first candidate handoff for Agent 3.
 
-The implementation and local subprocess path are validated; one credentialed
-live generation remains pending because the active Codex process does not
-currently contain `ARISTOTLE_API_KEY`.
+The implementation is validated by a credentialed Folland Proposition 0.16
+run. The task survived a local polling transport interruption through the
+resumable Project/Task path, returned a complete theorem, passed local Lean
+4.28.0 validation, and produced an Agent 3 handoff.
 
 ### Responsibilities
 

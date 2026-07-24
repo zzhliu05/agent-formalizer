@@ -9,13 +9,21 @@ updated: 2026-07-24
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
 
+## 2026-07-24 - Agent 2 Live Aristotle Proof Passed
+
+Status: active
+Process: P001
+Links: [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: Submitted the private Folland Proposition 0.16 package to Aristotle with questions disabled. A transport interruption was recovered through the same Project/Task IDs; the downloaded theorem `folland_real_analysis_0_16` passed protected-file and prohibited-placeholder gates plus local Lean 4.28.0 validation, producing a `ready_for_review` Agent 3 handoff.
+Next: Implement Agent 3 back-translation, independently compare the Lean statement against Agent 1, inspect theorem axioms, and own any semantic questioning or revision loop.
+
 ## 2026-07-24 - Agent 2 First-Candidate Generation Implemented
 
 Status: active
 Process: P001
 Links: [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
-Summary: Implemented non-interactive Aristotle submission with agent questions disabled, resumable polling, safe result extraction, protected-input and Lean-placeholder gates, local Lean kernel validation, and an exact Agent 3 handoff. Fifteen tests pass and the production local checker passed against the private Folland preparation; the live Aristotle proof run awaits runtime credential injection.
-Next: Inject `ARISTOTLE_API_KEY` into the active process, run one credentialed Folland generation to `ready_for_review`, then implement Agent 3 back-translation and its explicitly owned semantic questioning loop.
+Summary: Implemented non-interactive Aristotle submission with agent questions disabled, resumable polling, safe result extraction, protected-input and Lean-placeholder gates, local Lean kernel validation, and an exact Agent 3 handoff. Fifteen tests pass and the production local checker passed against the private Folland preparation.
+Next: Historical implementation milestone; see the newer live-proof entry above.
 
 ## 2026-07-24 - Agent 2 Aristotle Preparation Implemented
 

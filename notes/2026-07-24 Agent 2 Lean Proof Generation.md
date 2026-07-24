@@ -61,10 +61,28 @@ The production local Lean checker was also run against the private Folland
 returned exit code zero without timeout. This validates the real subprocess
 and environment wiring rather than only the mocked build runner.
 
-## Live-test status
+## Credentialed live test
 
-The current Codex process does not contain `ARISTOTLE_API_KEY`. The production
-`generate` command was verified to fail closed before creating a local
-generation attempt or remote project. A credentialed live proof run remains
-pending runtime key injection; no Aristotle proof quota was consumed during
-this implementation.
+A real Aristotle run completed for the private Folland Proposition 0.16
+preparation:
+
+- Project ID: `9f3b7adc-8227-42df-a9d1-e53805c86e40`
+- Task ID: `a942b5f0-7bd1-4f7b-9159-a05a8e4f4bf8`
+- Remote status: `COMPLETE`
+- Local state: `ready_for_review`
+- Candidate theorem: `folland_real_analysis_0_16`
+- Candidate `Main.lean` SHA-256:
+  `c79c11d79d10685b32419ddbfaa42781c02c09d03260404c28ec3f6fecb986ae`
+- Local Lean exit code: `0`
+- Local Lean duration: `637.845` seconds
+
+The first polling process encountered a network transport interruption while
+the remote task was still active. The `resume` command recovered the exact same
+Project/Task pair without another submission, then downloaded and validated the
+result. This is a production demonstration of the recovery path covered by the
+unit tests.
+
+The returned theorem contains no executable `sorry`, `admit`, or `sorryAx`.
+Protected preparation files remained byte-identical, and `handoff.json` assigns
+semantic review and any questioning loop to Agent 3. The API key was removed
+from the parent process and does not occur in the run artifacts.

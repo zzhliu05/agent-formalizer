@@ -121,6 +121,11 @@ questioning loop to Agent 3. Agent 3 may later ask questions or request a
 revision, but every revised candidate must return through Agent 2's mechanical
 validation before review.
 
+The production path was validated on Folland Proposition 0.16. A network
+interruption during polling was resumed against the same Aristotle project and
+task; the returned theorem passed local Lean 4.28.0 validation and produced a
+`ready_for_review` handoff.
+
 ## Project-isolated Aristotle CLI
 
 The reproducible Agent 2 CLI is declared in `pyproject.toml`, pinned to

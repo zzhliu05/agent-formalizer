@@ -140,6 +140,7 @@ def _new_run(
         "result": None,
         "validation": None,
         "error": None,
+        "error_history": [],
     }
     _write_json_atomic(run_dir / "run.json", run)
     return run_dir, run
@@ -167,12 +168,15 @@ def _record_snapshot(run: dict[str, Any], snapshot: RemoteTaskSnapshot) -> None:
 def _record_error(
     run_dir: Path, run: dict[str, Any], state: str, exc: Exception
 ) -> None:
-    run["state"] = state
-    run["updated_at"] = _now()
-    run["error"] = {
+    error = {
+        "occurred_at": _now(),
         "type": type(exc).__name__,
         "message": str(exc),
     }
+    run["state"] = state
+    run["updated_at"] = _now()
+    run["error"] = error
+    run.setdefault("error_history", []).append(error)
     _write_json_atomic(run_dir / "run.json", run)
 
 
@@ -266,6 +270,7 @@ async def _finish_terminal_run(
     extracted_root = run_dir / "result"
     safe_extract_tar(archive_path, extracted_root)
     run["state"] = "downloaded"
+    run["error"] = None
     run["result"] = {
         "archive": "result.tar.gz",
         "archive_sha256": archive_hash,
@@ -285,6 +290,7 @@ async def _finish_terminal_run(
     _write_build_log(run_dir / "build.log", validation.build)
     main_relative = validation.main_path.relative_to(run_dir).as_posix()
     run["state"] = "ready_for_review"
+    run["error"] = None
     run["validation"] = {
         "local_lean_check": "passed",
         "placeholder_scan": "passed",
@@ -517,6 +523,9 @@ async def resume_generation(
     active_transport = _active_transport(transport)
     try:
         snapshot = await active_transport.get_task(project_id, task_id)
+        run["error"] = None
+        run["updated_at"] = _now()
+        _write_json_atomic(run_dir / "run.json", run)
         snapshot = await _poll_to_terminal(
             active_transport,
             run_dir,

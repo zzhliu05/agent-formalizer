@@ -333,6 +333,10 @@ class GenerationTests(unittest.TestCase):
                 )
             )
             self.assertEqual(resumed.state, "ready_for_review")
+            resumed_run = json.loads(
+                (resumed.run_dir / "run.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNone(resumed_run["error"])
             self.assertEqual(
                 first_transport.submit_calls,
                 1,
