@@ -2,7 +2,7 @@
 type: project-spec
 status: active
 created: 2026-07-22
-updated: 2026-07-22
+updated: 2026-07-23
 ---
 
 # Three-Agent Formalization Pipeline
@@ -23,11 +23,11 @@ Each theorem receives a stable `theorem_id`. Every downstream artifact must reta
 
 ## Agent 1 — PDF OCR and Theorem Extraction
 
-### Current milestone: Markdown transcription only
+### Current milestone: separated OCR and theorem extraction
 
-Gemini currently performs only page-faithful PDF-to-Markdown conversion. It must not classify theorem records, infer prerequisites, assign theorem IDs, or emit formalization packages. The theorem/context extraction responsibilities below are deferred to a later internal stage of Agent 1 after the OCR corpus and its quality have been evaluated.
+Gemini performs only page-faithful PDF-to-Markdown conversion. It must not classify theorem records, infer prerequisites, assign theorem IDs, or emit formalization packages.
 
-The active output contract is:
+The OCR output contract is:
 
 ```text
 outputs/ocr/<document_id>/<run_id>/
@@ -38,18 +38,20 @@ outputs/ocr/<document_id>/<run_id>/
 
 Each Markdown chunk carries original PDF page anchors, OCR confidence, warnings, and overlapping boundary pages when configured. Downstream stages must treat these files as transcriptions, not verified mathematical interpretations.
 
-Agent 1 therefore has two internal stages without creating an additional project agent:
+Agent 1 has two active internal stages without creating an additional project agent:
 
-1. **Active OCR stage:** Gemini converts PDF chunks to Markdown only.
-2. **Deferred extraction stage:** a separately selected model API will convert Markdown chunks into theorem/context packages.
+1. **OCR stage:** Gemini 3.5 Flash-Lite converts PDF chunks to Markdown only.
+2. **Theorem stage:** the ShanghaiTech GPT-5.5 adapter converts Markdown chunks into theorem/context packages.
 
-The Gemini adapter must never receive the theorem extraction schema or prompts.
+The Gemini adapter never receives the theorem extraction schema or prompts. The GPT-5.5 adapter consumes the Markdown, not the PDF, so model responsibilities remain auditable.
 
-### Deferred responsibilities for the future extractor
+### Theorem extractor responsibilities
 
-- Read textbook PDFs with OCR when embedded text is missing or unreliable.
+- Read only the page-anchored Markdown emitted by the OCR stage.
 - Detect theorem-like units, including definitions, lemmas, propositions, corollaries, exercises promoted as claims, and named results.
 - Preserve the original theorem wording and source anchors: document identifier, edition when known, page range, section, and nearby heading.
+- Preserve the complete printed proof and split it into exhaustive source-grounded steps.
+- Mark proofs as `partial`, `omitted`, `by_reference`, `left_to_reader`, or `uncertain` whenever the printed source does not supply a complete proof.
 - Extract the theorem context required for formalization:
   - local definitions and notation;
   - variable domains and standing assumptions;
@@ -58,17 +60,19 @@ The Gemini adapter must never receive the theorem extraction schema or prompts.
   - unresolved OCR ambiguities and confidence.
 - Distinguish quoted source text from reconstructed or inferred context.
 
-### Deferred theorem extraction output contract
+### Theorem extraction output contract
 
-When theorem extraction is re-enabled with a separately approved extractor, write immutable attempts under `outputs/pipeline/<theorem_id>/extraction/attempt-NNN/` containing:
+Write immutable attempts under `outputs/pipeline/<theorem_id>/extraction/attempt-NNN/` containing:
 
-- `theorem.json`: identifier, source anchors, normalized statement, assumptions, variables, conclusion, dependencies, and OCR confidence;
-- `context.md`: readable source context, prerequisite explanations, notation map, and ambiguity notes;
-- `source.txt`: the minimally necessary OCR excerpt with page markers.
+- `theorem.json`: identifier, source anchors, complete verbatim statement and proof, proof status, exhaustive proof steps, omission evidence, local context, uncertainties, provider metadata, and input hashes;
+- `context.md`: readable prerequisite context, proof availability, and ambiguity notes;
+- `source.txt`: the minimally necessary statement, proof, omission marker, and context evidence.
 
 `outputs/pipeline/<theorem_id>/extraction/latest.json` identifies the newest attempt without overwriting prior evidence.
 
-Agent 1 must not write Lean code or silently repair a mathematically ambiguous source statement. Ambiguity is recorded for review or user resolution.
+Before any candidate is written, all quoted fields must match the source Markdown after whitespace and Markdown-emphasis normalization. Fine proof-step segmentation that fails exact coverage is collapsed to one exhaustive verbatim step and flagged. Ungrounded labels are rejected and recorded in the run manifest. Chunk validation is transactional: a grounded candidate failure prevents all candidates in that chunk from being written.
+
+Agent 1 must not write Lean code, invent missing proof steps, or silently repair a mathematically ambiguous source statement. Ambiguity is recorded for review or user resolution.
 
 ## Agent 2 — Lean Formalization
 

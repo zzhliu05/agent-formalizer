@@ -2,7 +2,7 @@
 type: wiki
 status: seed
 created: 2026-07-22
-updated: 2026-07-22
+updated: 2026-07-23
 ---
 
 # 多 Agent 形式化数学教材 Vault Index
@@ -35,4 +35,4 @@ This is the navigational map for the project. Start here after reading the newes
 
 ## Current Status
 
-The vault scaffold is initialized, P001 defines the three-agent architecture, and Agent 1 currently uses Gemini only for page-anchored PDF-to-Markdown conversion under `code/agents/extraction/`. The first Markdown-only run is recorded in [[../notes/2026-07-22 Markdown-only OCR Test]]; theorem/context extraction remains paused pending a separate model adapter.
+The vault scaffold is initialized and P001 defines the three-agent architecture. Agent 1 now has a strict two-stage implementation under `code/agents/extraction/`: Gemini performs page-anchored PDF-to-Markdown conversion only, and a separate ShanghaiTech GPT-5.5 adapter extracts source-grounded theorem statements, complete printed proofs, proof-omission states, and prerequisite context. The larger private Folland test is recorded in [[../notes/2026-07-23 GPT-5.5 Theorem Extraction Test]].

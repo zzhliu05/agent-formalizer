@@ -2,12 +2,20 @@
 type: process-log
 status: active
 created: 2026-07-22
-updated: 2026-07-22
+updated: 2026-07-23
 ---
 
 # Process Log
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
+
+## 2026-07-23 - GPT-5.5 Theorem Extraction Test Completed
+
+Status: active
+Process: P001
+Links: [[../notes/2026-07-23 GPT-5.5 Theorem Extraction Test]] - [[../code/agents/extraction/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: Added a separate ShanghaiTech GPT-5.5 Markdown-to-theorem adapter with strict source-evidence gates, explicit proof-omission states, complete-proof coverage checks, and transactional chunk writes. A private Folland pages 19–27 test recovered the continuous numbered range 0.4–0.24 as 21 records; 16 proofs were complete, three explicitly contained omitted details, and two were proofs by reference.
+Next: Add deterministic OCR math checks and an extraction evaluation set with human-verified statement/proof boundaries before scaling to a full chapter.
 
 ## 2026-07-22 - Markdown-only OCR Test Completed
 
