@@ -1,9 +1,9 @@
 # Agent 2 Lean Formalization
 
-This directory is the local Lean 4 + Mathlib compilation environment for
-Agent 2. It also contains the first implemented Aristotle integration stage:
-strictly reading an Agent 1 theorem package and preparing a prompt plus a
-minimal Lean project. Preparation is offline and does not submit a remote task.
+This directory contains Agent 2's Lean 4 + Mathlib environment and complete
+first-candidate generation path: strict Agent 1 input reading, Aristotle task
+preparation, non-interactive submission and polling, safe result download,
+local kernel validation, and handoff to Agent 3.
 
 ## Read and prepare a theorem package
 
@@ -63,18 +63,63 @@ sanitized `request.json` stores input and artifact hashes, the pinned
 `aristotlelib==2.1.0` interface, and the intended command shape, but never an
 API key or provider request metadata from Agent 1.
 
-The current preparation uses Aristotle's existing-project contract:
+## Generate and validate the first Lean proof
+
+Supply the credential only in the process that runs Agent 2:
 
 ```powershell
-$prompt = Get-Content -Raw "<attempt>\prompt.txt"
-uv run --locked aristotle submit $prompt `
-  --project-dir "<attempt>\project" `
-  --wait
+$env:ARISTOTLE_API_KEY = "<key>"
+uv run --locked formalization-agent generate `
+  "<preparation-attempt-or-latest.json>"
 ```
 
-This command is documented for the next adapter stage; `prepare` does not run
-it. Automatic submission, polling, download, local proof compilation, and
-handoff to Agent 3 remain unimplemented.
+Agent 2 uses the `aristotlelib 2.1.0` Python
+`Project.create_from_directory` contract with
+`AgentQuestionsSetting.DISABLED`. It deliberately does not use the CLI
+`submit --wait` path because that path enables interactive agent questions.
+Agent 2 never calls `Project.ask` or `aristotle continue`.
+
+If local waiting expires while Aristotle is still running, the same task can
+be resumed without creating a second remote project:
+
+```powershell
+uv run --locked formalization-agent resume `
+  "<generation-attempt-or-latest.json>"
+```
+
+Generation artifacts are append-only by attempt:
+
+```text
+outputs/pipeline/<theorem_id>/formalization/generation/
+  latest.json
+  attempt-NNN/
+    run.json
+    result.tar.gz
+    result/
+      Main.lean
+      SOURCE_THEOREM.md
+      FORMALIZATION_NOTES.md
+      ...
+    build.log
+    handoff.json
+```
+
+Before writing `handoff.json`, Agent 2:
+
+- safely extracts the result archive without links or path traversal;
+- confirms Aristotle did not modify the source theorem, toolchain, Lake file,
+  or Mathlib manifest;
+- rejects unchanged staging output and Lean source containing executable
+  `sorry`, `admit`, or `sorryAx`;
+- requires at least one theorem or lemma declaration;
+- runs the returned `Main.lean` through the pinned Lean 4.28.0 / Mathlib
+  environment.
+
+Only a candidate passing all mechanical gates reaches `ready_for_review`.
+`handoff.json` retains the Aristotle project/task IDs and assigns the semantic
+questioning loop to Agent 3. Agent 3 may later ask questions or request a
+revision, but every revised candidate must return through Agent 2's mechanical
+validation before review.
 
 ## Project-isolated Aristotle CLI
 
@@ -165,6 +210,4 @@ project.
 
 `FormalizationAgent.lean` contains a minimal, narrowly imported Mathlib smoke
 test only. Agent 2 should prefer the smallest practical Mathlib imports rather
-than loading the aggregate `Mathlib` module. Formalized theorems should later
-be generated as traceable pipeline artifacts under
-`outputs/pipeline/<theorem_id>/formalization/`.
+than loading the aggregate `Mathlib` module.

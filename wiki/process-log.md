@@ -9,6 +9,14 @@ updated: 2026-07-24
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
 
+## 2026-07-24 - Agent 2 First-Candidate Generation Implemented
+
+Status: active
+Process: P001
+Links: [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Summary: Implemented non-interactive Aristotle submission with agent questions disabled, resumable polling, safe result extraction, protected-input and Lean-placeholder gates, local Lean kernel validation, and an exact Agent 3 handoff. Fifteen tests pass and the production local checker passed against the private Folland preparation; the live Aristotle proof run awaits runtime credential injection.
+Next: Inject `ARISTOTLE_API_KEY` into the active process, run one credentialed Folland generation to `ready_for_review`, then implement Agent 3 back-translation and its explicitly owned semantic questioning loop.
+
 ## 2026-07-24 - Agent 2 Aristotle Preparation Implemented
 
 Status: active

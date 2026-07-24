@@ -13,5 +13,11 @@ Independently determine whether the Lean artifact faithfully represents the extr
 - Require a successful local Lean build.
 - Reject source containing `sorry`, `admit`, or explicit `sorryAx`.
 - Inspect theorem axioms and reject a `sorryAx` dependency.
-- Never repair the candidate during review; route failures to Agent 1 or Agent 2.
+- Own the semantic questioning loop after Agent 2 produces the first candidate.
+  Agent 3 decides whether to ask about a modeling choice or issue a revision
+  instruction against the recorded Aristotle project. Every revised Lean
+  candidate must pass Agent 2's mechanical validation gates again.
+- Never edit Lean source directly during review; route extraction failures to
+  Agent 1 and execute proof revisions through the recorded Agent 3 questioning
+  loop plus Agent 2 validation.
 - Emit exactly one verdict: `accepted`, `needs_reformalization`, or `needs_reextraction`.

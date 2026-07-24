@@ -1,6 +1,6 @@
 ---
 type: implementation-note
-status: active
+status: resolved
 created: 2026-07-24
 process: P001
 ---
@@ -49,9 +49,8 @@ item, two extracted proof steps, zero recorded uncertainties, and a complete
 statement boundary. The resulting `request.json` records `submitted: false` at
 the CLI boundary; no Aristotle proof task or quota was consumed.
 
-## Remaining boundary
+## Resolution
 
-The next stage must inject `ARISTOTLE_API_KEY` only at runtime, submit the
-prepared project, persist returned task identifiers and sanitized status
-metadata, download the result, compile the returned `Main.lean`, reject
-prohibited placeholders, and create the formalization bundle for Agent 3.
+Remote submission, non-interactive polling, result validation, and Agent 3
+handoff are implemented in [[2026-07-24 Agent 2 Lean Proof Generation]]. This
+note remains the durable record for the earlier offline-preparation milestone.

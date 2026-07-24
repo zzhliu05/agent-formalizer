@@ -139,6 +139,10 @@ Requirements:
 7. Run `lake build` and finish only when it succeeds.
 8. Keep the scope to this single result. Do not formalize unrelated textbook
    material.
+9. Do not ask the operator follow-up questions. If a non-blocking
+   interpretation choice remains, make the most faithful defensible choice and
+   document it in `FORMALIZATION_NOTES.md`. Agent 3 owns all later semantic
+   questioning and revision requests.
 """
 
 

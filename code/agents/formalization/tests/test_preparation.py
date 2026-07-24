@@ -194,7 +194,13 @@ class PreparationTests(unittest.TestCase):
             )
 
             prompt = prepared.prompt_path.read_text(encoding="utf-8")
-            self.assertIn("submit", json.dumps(request))
+            self.assertEqual(
+                request["aristotle"]["interface"],
+                "python.Project.create_from_directory",
+            )
+            self.assertEqual(
+                request["aristotle"]["agent_questions_setting"], "DISABLED"
+            )
             self.assertIn("SOURCE_THEOREM.md", prompt)
             self.assertIn("complete kernel-checked proof", prompt)
             self.assertNotIn(

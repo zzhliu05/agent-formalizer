@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import sys
 from pathlib import Path
 
+from .generator import GenerationError, generate_proof, resume_generation
 from .preparer import (
     PreparationError,
     PreparationPolicy,
     prepare_formalization,
 )
+from .preparation_reader import PreparationReadError
 from .reader import PackageReadError, load_theorem_package
 
 
@@ -62,6 +65,65 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Explicitly allow an Agent 1 record with extraction uncertainties.",
     )
+
+    generate_parser = subparsers.add_parser(
+        "generate",
+        help="Submit a prepared task non-interactively and validate the Lean result.",
+    )
+    generate_parser.add_argument(
+        "input",
+        type=Path,
+        help="preparation request.json, latest.json, attempt dir, or theorem dir",
+    )
+    generate_parser.add_argument(
+        "--template-root",
+        type=Path,
+        default=_default_template_root(),
+        help="Pinned Agent 2 Lean project used for local kernel validation.",
+    )
+    generate_parser.add_argument(
+        "--generation-root",
+        type=Path,
+        default=None,
+        help="Override the sibling formalization/generation output directory.",
+    )
+    generate_parser.add_argument(
+        "--poll-seconds",
+        type=float,
+        default=30.0,
+        help="Non-interactive Aristotle status polling interval.",
+    )
+    generate_parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=7200.0,
+        help="Maximum time to wait before leaving the remote task resumable.",
+    )
+    generate_parser.add_argument(
+        "--build-timeout-seconds",
+        type=int,
+        default=1800,
+        help="Maximum time for local Lean kernel validation.",
+    )
+
+    resume_parser = subparsers.add_parser(
+        "resume",
+        help="Resume non-interactive polling for an existing Aristotle generation.",
+    )
+    resume_parser.add_argument(
+        "input",
+        type=Path,
+        help="run.json, generation attempt directory, or generation/latest.json",
+    )
+    resume_parser.add_argument(
+        "--template-root",
+        type=Path,
+        default=_default_template_root(),
+        help="Pinned Agent 2 Lean project used for local kernel validation.",
+    )
+    resume_parser.add_argument("--poll-seconds", type=float, default=30.0)
+    resume_parser.add_argument("--timeout-seconds", type=float, default=7200.0)
+    resume_parser.add_argument("--build-timeout-seconds", type=int, default=1800)
     return parser
 
 
@@ -86,9 +148,10 @@ def _inspect(input_path: Path) -> dict[str, object]:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
+        exit_code = 0
         if args.command == "inspect":
             payload = _inspect(args.input)
-        else:
+        elif args.command == "prepare":
             output_root = args.output_root
             if output_root is None:
                 output_root = _find_repo_root(Path.cwd()) / "outputs" / "pipeline"
@@ -108,9 +171,61 @@ def main(argv: list[str] | None = None) -> int:
                 "request_sha256": prepared.request_sha256,
                 "submitted": False,
             }
-    except (PackageReadError, PreparationError) as exc:
+        elif args.command == "generate":
+            generated = asyncio.run(
+                generate_proof(
+                    args.input,
+                    template_root=args.template_root,
+                    generation_root=args.generation_root,
+                    poll_seconds=args.poll_seconds,
+                    timeout_seconds=args.timeout_seconds,
+                    build_timeout_seconds=args.build_timeout_seconds,
+                )
+            )
+            payload = {
+                "theorem_id": generated.theorem_id,
+                "state": generated.state,
+                "run_dir": str(generated.run_dir),
+                "project_id": generated.project_id,
+                "task_id": generated.task_id,
+                "handoff_path": (
+                    str(generated.handoff_path) if generated.handoff_path else None
+                ),
+                "questioning_loop_owner": "agent3",
+            }
+            if generated.state != "ready_for_review":
+                exit_code = 3
+        else:
+            generated = asyncio.run(
+                resume_generation(
+                    args.input,
+                    template_root=args.template_root,
+                    poll_seconds=args.poll_seconds,
+                    timeout_seconds=args.timeout_seconds,
+                    build_timeout_seconds=args.build_timeout_seconds,
+                )
+            )
+            payload = {
+                "theorem_id": generated.theorem_id,
+                "state": generated.state,
+                "run_dir": str(generated.run_dir),
+                "project_id": generated.project_id,
+                "task_id": generated.task_id,
+                "handoff_path": (
+                    str(generated.handoff_path) if generated.handoff_path else None
+                ),
+                "questioning_loop_owner": "agent3",
+            }
+            if generated.state != "ready_for_review":
+                exit_code = 3
+    except (
+        PackageReadError,
+        PreparationError,
+        PreparationReadError,
+        GenerationError,
+    ) as exc:
         print(f"formalization-agent: {exc}", file=sys.stderr)
         return 2
 
     print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
-    return 0
+    return exit_code

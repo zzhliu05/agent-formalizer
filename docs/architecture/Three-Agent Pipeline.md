@@ -76,7 +76,7 @@ Agent 1 must not write Lean code, invent missing proof steps, or silently repair
 
 ## Agent 2 — Lean Formalization
 
-### Current milestone: theorem-package reading and Aristotle task preparation
+### Current milestone: first-candidate Lean proof generation
 
 The local project under `code/agents/formalization/` pins Lean 4.28.0 and
 Mathlib v4.28.0, matching the current Aristotle setup requirement supplied for
@@ -86,35 +86,41 @@ project-local `pyproject.toml` and `uv.lock`; reproducible runs use
 `uv run --locked aristotle`. A credentialed, read-only project-list request has
 validated authentication and basic live service access.
 
-The offline preparation adapter now reads the immutable Agent 1 package,
-verifies its latest-pointer and companion artifacts, applies formalization
-safety gates, and produces a minimal Lean project plus a prompt for Aristotle's
-`submit --project-dir` contract. It explicitly distinguishes an incomplete
-printed proof from an incomplete theorem statement: the former may be proved
-independently, while the latter is rejected. Remote proof submission, result
-retrieval, compilation of the returned proof, and handoff to Agent 3 are not
-yet implemented.
+The preparation adapter reads the immutable Agent 1 package, verifies its
+latest-pointer and companion artifacts, applies formalization safety gates, and
+produces a minimal Lean project plus prompt. The generation adapter then
+submits that project through the pinned Aristotle SDK with agent questions
+disabled, polls without interaction, supports resuming the same task after a
+local timeout, downloads and safely extracts the result, checks protected
+inputs and prohibited placeholders, performs local Lean kernel validation, and
+writes the first candidate handoff for Agent 3.
+
+The implementation and local subprocess path are validated; one credentialed
+live generation remains pending because the active Codex process does not
+currently contain `ARISTOTLE_API_KEY`.
 
 ### Responsibilities
 
 - Consume only a complete Agent 1 theorem package.
 - Map extracted concepts to Lean 4 and Mathlib definitions, recording non-obvious modeling choices.
-- Build a self-contained theorem statement and proof context, then submit the formalization task through a dedicated Harmonic Aristotle API adapter.
+- Build a self-contained theorem statement and proof context, then submit the formalization task through a dedicated non-interactive Harmonic Aristotle adapter.
 - Preserve Aristotle request identifiers, status, model/service metadata when returned, and a sanitized execution record without credentials.
 - Compile the returned Lean artifact locally and iterate on formal errors before handing it to review.
+- Stop after the first mechanically valid candidate. Do not ask Aristotle
+  follow-up questions or autonomously iterate on semantic objections.
 
 ### Aristotle integration boundary
 
-The current transport boundary is the official `aristotlelib 2.1.0` CLI
-existing-project workflow: a prompt plus a Lean project directory are prepared
-for `aristotle submit <prompt> --project-dir <dir> --wait`. The adapter records
-that command shape without executing it. Authentication remains the
-`ARISTOTLE_API_KEY` process environment variable.
+The current transport boundary is the official `aristotlelib 2.1.0`
+existing-project workflow implemented through
+`Project.create_from_directory`. Agent 2 passes
+`AgentQuestionsSetting.DISABLED` and polls task status without using the SDK's
+interactive wait helper. Authentication remains the `ARISTOTLE_API_KEY`
+process environment variable.
 
-Concrete submission identifiers, polling behavior, quotas, retry rules, and
-download metadata will be recorded from the live CLI responses when the next
-stage is implemented. API credentials must never enter Git, prompts saved in
-the vault, or output artifacts.
+Project/task identifiers, status transitions, archive hashes, and validation
+results are recorded in sanitized generation metadata. API credentials must
+never enter Git, prompts saved in the vault, or output artifacts.
 
 ### Output contract
 
@@ -129,13 +135,14 @@ Write immutable preparation attempts under
 - `project/FORMALIZATION_NOTES.md`: required interpretation/build record;
 - pinned Lean, Lake, and Mathlib project files.
 
-After remote execution is implemented, write the formalization result bundle
-under `outputs/pipeline/<theorem_id>/formalization/`:
+Write immutable generation attempts under
+`outputs/pipeline/<theorem_id>/formalization/generation/attempt-NNN/`:
 
-- `Main.lean`: Lean theorem statement and proposed proof;
-- `formalization.md`: mapping choices, imported Mathlib concepts, and known limitations;
-- `aristotle-run.json`: sanitized request/run metadata and completion status;
-- `build.log`: local Lean build result.
+- `run.json`: sanitized Aristotle task IDs, status history, archive hash, and
+  mechanical validation status;
+- `result.tar.gz` and safely extracted result project;
+- `build.log`: local Lean kernel-validation result;
+- `handoff.json`: exact source/candidate hashes and Agent 3 review ownership.
 
 Agent 2 may use temporary `sorry` placeholders while working, but a bundle containing `sorry`, `admit`, or `sorryAx` is never eligible for acceptance.
 
@@ -154,6 +161,10 @@ Agent 2 may use temporary `sorry` placeholders while working, but a bundle conta
 - Statically reject `sorry`, `admit`, and explicit `sorryAx` occurrences in submitted Lean sources.
 - Inspect the accepted theorem's axioms and reject any dependency on `sorryAx`; record any other nonstandard axioms for explicit review.
 - Never modify the candidate proof while auditing it.
+- Own the post-handoff questioning loop. Agent 3 may use the recorded
+  Aristotle project to ask about an interpretation or issue a revision
+  instruction; any revised candidate must pass Agent 2's mechanical gates
+  before another semantic verdict.
 
 ### Output contract and routing
 
