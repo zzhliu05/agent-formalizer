@@ -66,13 +66,30 @@ def _page_anchors(markdown: str) -> set[int]:
 def _evidence_text(markdown: str) -> str:
     text = re.sub(r"\A---\s*\n.*?\n---\s*\n", "", markdown, flags=re.DOTALL)
     text = re.sub(r"<!--.*?-->", " ", text, flags=re.DOTALL)
+    text = re.sub(r"(?m)^\s*>\s*OCR warning:.*$", " ", text)
+    text = re.sub(
+        r"(?m)^\s*\*?\(注[:：].*(?:OCR|原文|印刷不清|符号连写|按标准).*\)\*?\s*$",
+        " ",
+        text,
+    )
+    text = re.sub(r"(?m)^\s*-{3,}(?:\s*\|\s*-{3,})*\s*$", " ", text)
     text = re.sub(r"(?m)^# OCR chunk .*$", " ", text)
     text = re.sub(r"(?m)^## PDF page \d+\s*$", " ", text)
     text = re.sub(
         (
-            r"(?m)^\**(?:"
-            r"\d+\s+(?:\$\s*\\quad\s*\$\s*)?[A-Z][A-Z ]+"
-            r"|[A-Z][A-Z ]+(?:\$\s*\\quad\s*\$\s*)?\d+"
+            r"(?m)^\s*\**(?:"
+            r"\d+\**\s+(?:\$\s*\\quad\s*\$\s*)?[A-Z][A-Z ]+"
+            r"|[A-Z][A-Z ]+(?:\$\s*\\quad\s*\$\s*)?\**\d+"
+            r")\**\s*$"
+        ),
+        " ",
+        text,
+    )
+    text = re.sub(
+        (
+            r"(?m)^\s*\**(?:"
+            r"\d+\s*\|\s*第\s*\d+\s*章\b.*"
+            r"|(?:\d+(?:\.\d+)+\s+.+|习题\s*\d+|补\s*充\s*题)\s*\|\s*\d+"
             r")\**\s*$"
         ),
         " ",
@@ -88,6 +105,7 @@ def _canonical(value: str) -> str:
 def _evidence_canonical(value: str) -> str:
     text = value.replace("$\\blacksquare$", "■").replace("\\blacksquare", "■")
     text = text.replace("∎", "■")
+    text = text.replace("**", "")
     output: list[str] = []
     in_math = False
     index = 0
@@ -149,13 +167,60 @@ def _evidence_safe_proof_steps(candidate: TheoremCandidate) -> TheoremCandidate:
     )
 
 
+def _evidence_safe_title(candidate: TheoremCandidate) -> TheoremCandidate:
+    if not candidate.title_verbatim:
+        return candidate
+    if _evidence_canonical(candidate.title_verbatim) in _evidence_canonical(
+        candidate.statement_verbatim
+    ):
+        return candidate
+    warning = (
+        "The model supplied a title that was not printed inside the theorem "
+        "statement; the pipeline cleared the optional title field."
+    )
+    return candidate.model_copy(
+        update={
+            "title_verbatim": "",
+            "uncertainties": [*candidate.uncertainties, warning],
+        }
+    )
+
+
+def _evidence_safe_context(
+    candidate: TheoremCandidate,
+    *,
+    source: str,
+) -> TheoremCandidate:
+    retained = [
+        item
+        for item in candidate.context_items
+        if _evidence_canonical(item.text_verbatim) in _evidence_canonical(source)
+    ]
+    removed_count = len(candidate.context_items) - len(retained)
+    if removed_count == 0:
+        return candidate
+    warning = (
+        f"The pipeline removed {removed_count} optional context item(s) that "
+        "were not verbatim evidence from the OCR Markdown."
+    )
+    return candidate.model_copy(
+        update={
+            "context_items": retained,
+            "uncertainties": [*candidate.uncertainties, warning],
+        }
+    )
+
+
 def _validate_candidate(
     candidate: TheoremCandidate,
     *,
     markdown: str,
     chunk_name: str,
 ) -> TheoremCandidate:
+    candidate = _evidence_safe_title(candidate)
     candidate = _evidence_safe_proof_steps(candidate)
+    evidence = _evidence_text(markdown)
+    candidate = _evidence_safe_context(candidate, source=evidence)
     known_pages = _page_anchors(markdown)
     if not known_pages:
         raise ValueError(f"{chunk_name} contains no pdf-page anchors")
@@ -168,7 +233,6 @@ def _validate_candidate(
         if not set(pages).issubset(known_pages):
             raise ValueError(f"source_pages {pages} are outside {sorted(known_pages)}")
 
-    evidence = _evidence_text(markdown)
     _require_evidence(candidate.statement_verbatim, evidence, "statement_verbatim")
     _require_evidence(candidate.label_verbatim, candidate.statement_verbatim, "label_verbatim")
     _require_evidence(candidate.title_verbatim, candidate.statement_verbatim, "title_verbatim")
@@ -336,6 +400,20 @@ class TheoremExtractionPipeline:
             rejected = []
             validated_candidates: list[TheoremCandidate] = []
             for candidate in response.batch.candidates:
+                plain_label = candidate.label_verbatim.replace("*", "").strip()
+                if re.search(
+                    r"^(?:例|example|Àı)\s*\d+\.\d+\b",
+                    plain_label,
+                    flags=re.IGNORECASE,
+                ):
+                    rejected.append(
+                        {
+                            "label": candidate.label_verbatim,
+                            "reason": "worked_example_not_theorem_like",
+                        }
+                    )
+                    rejected_candidate_count += 1
+                    continue
                 try:
                     candidate = _validate_candidate(
                         candidate,
@@ -350,6 +428,33 @@ class TheoremExtractionPipeline:
                             {
                                 "label": candidate.label_verbatim,
                                 "reason": "label_not_grounded_in_source",
+                            }
+                        )
+                        rejected_candidate_count += 1
+                        continue
+                    candidate_id = _theorem_id(safe_document_id, candidate)
+                    existing_latest = (
+                        output_root
+                        / candidate_id
+                        / "extraction"
+                        / "latest.json"
+                    )
+                    if existing_latest.is_file():
+                        rejected.append(
+                            {
+                                "label": candidate.label_verbatim,
+                                "reason": (
+                                    "overlap_candidate_not_grounded_existing_record"
+                                ),
+                            }
+                        )
+                        rejected_candidate_count += 1
+                        continue
+                    if not re.search(r"\d+\.\d+", candidate.label_verbatim):
+                        rejected.append(
+                            {
+                                "label": candidate.label_verbatim,
+                                "reason": "non_numbered_candidate_not_grounded",
                             }
                         )
                         rejected_candidate_count += 1

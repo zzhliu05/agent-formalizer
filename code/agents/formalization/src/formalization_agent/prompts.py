@@ -109,13 +109,23 @@ def build_source_theorem_markdown(loaded: LoadedTheoremPackage) -> str:
 def build_aristotle_prompt(loaded: LoadedTheoremPackage) -> str:
     theorem_id = loaded.package.theorem_id
     proof_status = loaded.package.result.proof_status
-    proof_guidance = (
-        "A complete printed proof is available as guidance, but independently check every "
-        "step in Lean."
-        if proof_status == "complete"
-        else "The printed proof is incomplete or absent. Construct a complete proof "
-        "independently and record that fact in FORMALIZATION_NOTES.md."
-    )
+    if proof_status == "complete":
+        proof_guidance = (
+            "A complete printed proof is available as guidance, but independently check "
+            "every step in Lean."
+        )
+    elif proof_status == "not_applicable":
+        proof_guidance = (
+            "The source presents this as a principle/axiom and supplies no proof method. "
+            "Construct a complete Lean proof from existing Mathlib foundations, but do "
+            "not claim source proof-method agreement. Agent 3 will use declaration-only "
+            "statement review."
+        )
+    else:
+        proof_guidance = (
+            "The printed proof is incomplete or absent. Construct a complete proof "
+            "independently and record that fact in FORMALIZATION_NOTES.md."
+        )
     return f"""Formalize exactly one mathematical result: `{theorem_id}`.
 
 The authoritative mathematical input is `SOURCE_THEOREM.md`. Every string in

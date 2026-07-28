@@ -19,6 +19,7 @@ from formalization_agent.aristotle_transport import (
 from formalization_agent.candidate_validation import (
     BuildOutcome,
     CandidateValidationError,
+    run_local_lean_check,
     safe_extract_tar,
     strip_lean_comments_and_strings,
     validate_candidate,
@@ -213,6 +214,33 @@ class ArchiveAndLeanScanTests(unittest.TestCase):
                     _successful_build,
                 )
 
+    def test_local_lean_check_compiles_imported_project_module(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            helper = root / "Main" / "Auxiliary.lean"
+            helper.parent.mkdir()
+            helper.write_text(
+                "theorem local_helper : True := by trivial\n",
+                encoding="utf-8",
+            )
+            main = root / "Main.lean"
+            main.write_text(
+                "import Main.Auxiliary\n\n"
+                "theorem local_main : True := local_helper\n",
+                encoding="utf-8",
+            )
+
+            outcome = run_local_lean_check(
+                root,
+                main,
+                FORMALIZATION_ROOT,
+                180,
+            )
+
+            self.assertEqual(outcome.exit_code, 0, outcome.stdout + outcome.stderr)
+            self.assertFalse(outcome.timed_out)
+            self.assertIn("local module Main/Auxiliary.lean", outcome.stdout)
+
 
 class GenerationTests(unittest.TestCase):
     def test_noninteractive_generation_creates_agent3_handoff(self) -> None:
@@ -232,7 +260,6 @@ class GenerationTests(unittest.TestCase):
                 generate_proof(
                     prepared.attempt_dir,
                     template_root=FORMALIZATION_ROOT,
-                    generation_root=root / "generation",
                     poll_seconds=0,
                     timeout_seconds=10,
                     build_timeout_seconds=10,
@@ -244,8 +271,13 @@ class GenerationTests(unittest.TestCase):
             self.assertEqual(generated.state, "ready_for_review")
             self.assertEqual(transport.submit_calls, 1)
             self.assertEqual(transport.download_calls, 1)
+            self.assertEqual(generated.run_dir.parent.name, "gen")
+            self.assertEqual(generated.run_dir.name, "001")
+            self.assertTrue((generated.run_dir / "lean" / "Main.lean").is_file())
+            self.assertFalse((generated.run_dir / "result").exists())
             self.assertTrue(generated.handoff_path and generated.handoff_path.is_file())
             handoff = json.loads(generated.handoff_path.read_text(encoding="utf-8"))
+            self.assertEqual(handoff["candidate"]["project_root"], "lean")
             self.assertEqual(handoff["review"]["owner"], "agent3")
             self.assertEqual(
                 handoff["review"]["questioning_loop_owner"], "agent3"
@@ -258,6 +290,16 @@ class GenerationTests(unittest.TestCase):
             )
             self.assertNotIn("api_key", json.dumps(run).lower())
             self.assertTrue((generated.run_dir / "build.log").is_file())
+            latest_ready = json.loads(
+                (generated.run_dir.parent / "latest-ready.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                latest_ready["path"],
+                f"{generated.run_dir.name}/run.json",
+            )
+            self.assertEqual(latest_ready["state"], "ready_for_review")
 
     def test_modified_protected_file_fails_validation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

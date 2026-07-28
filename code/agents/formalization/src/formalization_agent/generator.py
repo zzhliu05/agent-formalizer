@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import time
 import uuid
 from dataclasses import dataclass
@@ -19,9 +20,16 @@ from .aristotle_transport import (
 from .candidate_validation import (
     BuildRunner,
     CandidateValidationError,
+    compact_candidate_tree,
     run_local_lean_check,
     safe_extract_tar,
     validate_candidate,
+)
+from .layout import (
+    attempt_name,
+    generation_root_for_preparation,
+    iter_attempt_dirs,
+    parse_attempt_name,
 )
 from .preparation_reader import LoadedPreparation, load_preparation
 from .reader import sha256_bytes
@@ -88,23 +96,19 @@ def _write_build_log(path: Path, build: object) -> None:
 
 
 def _next_attempt(root: Path) -> int:
-    attempts = []
-    if root.is_dir():
-        for child in root.iterdir():
-            if child.is_dir() and child.name.startswith("attempt-"):
-                suffix = child.name.removeprefix("attempt-")
-                if suffix.isdigit():
-                    attempts.append(int(suffix))
+    attempts = [
+        parsed
+        for child in iter_attempt_dirs(root)
+        if (parsed := parse_attempt_name(child.name)) is not None
+    ]
     return max(attempts, default=0) + 1
 
 
 def _generation_root(preparation: LoadedPreparation) -> Path:
-    preparation_root = preparation.attempt_dir.parent
-    if preparation_root.name != "preparation":
-        raise GenerationError(
-            "preparation attempt must live directly under a preparation directory"
-        )
-    return preparation_root.parent / "generation"
+    try:
+        return generation_root_for_preparation(preparation.attempt_dir)
+    except ValueError as exc:
+        raise GenerationError(str(exc)) from exc
 
 
 def _new_run(
@@ -112,7 +116,7 @@ def _new_run(
 ) -> tuple[Path, dict[str, Any]]:
     generation_root.mkdir(parents=True, exist_ok=True)
     attempt = _next_attempt(generation_root)
-    run_dir = generation_root / f"attempt-{attempt:03d}"
+    run_dir = generation_root / attempt_name(generation_root, attempt)
     run_dir.mkdir()
     preparation_reference = os.path.relpath(
         preparation.request_path, start=run_dir
@@ -208,7 +212,9 @@ async def _poll_to_terminal(
 
 
 def _latest_payload(result: GenerationResult, run_hash: str) -> dict[str, Any]:
-    attempt = int(result.run_dir.name.removeprefix("attempt-"))
+    attempt = parse_attempt_name(result.run_dir.name)
+    if attempt is None:
+        raise GenerationError("generation run directory has an invalid attempt name")
     return {
         "schema_version": "1.0",
         "theorem_id": result.theorem_id,
@@ -222,7 +228,10 @@ def _latest_payload(result: GenerationResult, run_hash: str) -> dict[str, Any]:
 def _finalize_latest(generation_root: Path, result: GenerationResult) -> None:
     run_path = result.run_dir / "run.json"
     run_hash = sha256_bytes(run_path.read_bytes())
-    _write_json_atomic(generation_root / "latest.json", _latest_payload(result, run_hash))
+    payload = _latest_payload(result, run_hash)
+    _write_json_atomic(generation_root / "latest.json", payload)
+    if result.state == "ready_for_review" and result.handoff_path is not None:
+        _write_json_atomic(generation_root / "latest-ready.json", payload)
 
 
 def _active_transport(
@@ -267,14 +276,29 @@ async def _finish_terminal_run(
     archive_path = run_dir / "result.tar.gz"
     await transport.download_result(snapshot.project_id, archive_path)
     archive_hash = sha256_bytes(archive_path.read_bytes())
-    extracted_root = run_dir / "result"
-    safe_extract_tar(archive_path, extracted_root)
+    if generation_root.name == "gen":
+        temporary_tree = run_dir / f".extract-{uuid.uuid4().hex}"
+        try:
+            safe_extract_tar(archive_path, temporary_tree)
+            extracted_root = compact_candidate_tree(
+                temporary_tree, run_dir / "lean"
+            )
+        except Exception:
+            if temporary_tree.exists():
+                shutil.rmtree(temporary_tree)
+            raise
+        tree_name = "lean"
+    else:
+        extracted_root = run_dir / "result"
+        safe_extract_tar(archive_path, extracted_root)
+        tree_name = "result"
     run["state"] = "downloaded"
     run["error"] = None
     run["result"] = {
         "archive": "result.tar.gz",
         "archive_sha256": archive_hash,
         "archive_size_bytes": archive_path.stat().st_size,
+        "tree": tree_name,
     }
     run["updated_at"] = _now()
     _write_json_atomic(run_dir / "run.json", run)
@@ -299,7 +323,15 @@ def _complete_local_validation(
     build_timeout_seconds: int,
     build_runner: BuildRunner,
 ) -> GenerationResult:
-    extracted_root = run_dir / "result"
+    result_metadata = run.get("result")
+    tree_name = (
+        result_metadata.get("tree", "result")
+        if isinstance(result_metadata, dict)
+        else "result"
+    )
+    if tree_name not in {"lean", "result"}:
+        raise GenerationError("generation candidate tree reference is invalid", run_dir)
+    extracted_root = run_dir / tree_name
     validation = validate_candidate(
         extracted_root,
         preparation.project_dir,
@@ -371,7 +403,7 @@ def _resolve_run_input(input_path: Path) -> tuple[Path, dict[str, Any] | None]:
     path = input_path.resolve()
     if path.is_file() and path.name == "run.json":
         return path, None
-    if path.is_file() and path.name == "latest.json":
+    if path.is_file() and path.name in {"latest.json", "latest-ready.json"}:
         pointer = json.loads(path.read_text(encoding="utf-8-sig"))
         if not isinstance(pointer, dict) or not isinstance(pointer.get("path"), str):
             raise GenerationError("generation latest pointer is invalid")
@@ -382,7 +414,10 @@ def _resolve_run_input(input_path: Path) -> tuple[Path, dict[str, Any] | None]:
         if target.name != "run.json":
             raise GenerationError("generation latest pointer must resolve to run.json")
         attempt = pointer.get("attempt")
-        if not isinstance(attempt, int) or target.parent.name != f"attempt-{attempt:03d}":
+        if (
+            not isinstance(attempt, int)
+            or parse_attempt_name(target.parent.name) != attempt
+        ):
             raise GenerationError(
                 "generation latest attempt does not match its target directory"
             )
@@ -456,7 +491,10 @@ def revalidate_generation(
     if result_metadata.get("archive") != "result.tar.gz":
         raise GenerationError("generation result archive reference is invalid", run_dir)
     archive_path = run_dir / "result.tar.gz"
-    extracted_root = run_dir / "result"
+    tree_name = result_metadata.get("tree", "result")
+    if tree_name not in {"lean", "result"}:
+        raise GenerationError("generation candidate tree reference is invalid", run_dir)
+    extracted_root = run_dir / tree_name
     if not archive_path.is_file() or not extracted_root.is_dir():
         raise GenerationError("downloaded result files are missing", run_dir)
     if result_metadata.get("archive_sha256") != sha256_bytes(archive_path.read_bytes()):

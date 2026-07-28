@@ -38,6 +38,10 @@ The second stage writes append-only attempts:
 
 Every quoted field is checked against the input Markdown. A complete proof's step strings must exhaustively cover its proof text. When only the step partition is unreliable, it is replaced with one exhaustive verbatim evidence step and the downgrade is recorded in `uncertainties`. A label not present in the source is rejected and listed in the run manifest.
 
+Cross-page grounding removes OCR page anchors, generated page headings, and
+book running headers such as `**16** PROLOGUE` before comparison, so a page
+break cannot be mistaken for printed proof text.
+
 These checks prevent silent proof invention; they do not replace mathematical review by Agent 3.
 
 ## Safety

@@ -70,6 +70,22 @@ def _parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Explicitly allow an Agent 1 record with extraction uncertainties.",
     )
+    prepare_parser.add_argument(
+        "--allow-source-axiom",
+        action="store_true",
+        help=(
+            "Formalize a source-labeled axiom that has printed proof evidence "
+            "as a Lean theorem; definitions remain ineligible."
+        ),
+    )
+    prepare_parser.add_argument(
+        "--allow-declaration-only",
+        action="store_true",
+        help=(
+            "Formalize and statement-audit a source axiom with no printed proof; "
+            "requires --allow-source-axiom and never claims proof-method agreement."
+        ),
+    )
 
     generate_parser = subparsers.add_parser(
         "generate",
@@ -90,7 +106,7 @@ def _parser() -> argparse.ArgumentParser:
         "--generation-root",
         type=Path,
         default=None,
-        help="Override the sibling formalization/generation output directory.",
+        help="Override the compact sibling gen output directory.",
     )
     generate_parser.add_argument(
         "--poll-seconds",
@@ -118,7 +134,7 @@ def _parser() -> argparse.ArgumentParser:
     resume_parser.add_argument(
         "input",
         type=Path,
-        help="run.json, generation attempt directory, or generation/latest.json",
+        help="run.json, generation attempt directory, or gen/latest.json",
     )
     resume_parser.add_argument(
         "--template-root",
@@ -137,7 +153,7 @@ def _parser() -> argparse.ArgumentParser:
     revalidate_parser.add_argument(
         "input",
         type=Path,
-        help="run.json, generation attempt directory, or generation/latest.json",
+        help="run.json, generation attempt directory, or gen/latest.json",
     )
     revalidate_parser.add_argument(
         "--template-root",
@@ -181,7 +197,11 @@ def main(argv: list[str] | None = None) -> int:
                 args.input,
                 output_root=output_root,
                 template_root=args.template_root,
-                policy=PreparationPolicy(allow_uncertain=args.allow_uncertain),
+                policy=PreparationPolicy(
+                    allow_uncertain=args.allow_uncertain,
+                    allow_source_axiom=args.allow_source_axiom,
+                    allow_declaration_only=args.allow_declaration_only,
+                ),
             )
             payload = {
                 "theorem_id": prepared.theorem_id,

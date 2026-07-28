@@ -286,6 +286,85 @@ def test_pipeline_records_ungrounded_boundary_candidate(tmp_path: Path) -> None:
     ]
 
 
+def test_pipeline_rejects_worked_example_candidate(tmp_path: Path) -> None:
+    candidate = _complete_candidate().model_copy(
+        update={
+            "label_verbatim": "例 8.44",
+            "statement_verbatim": "例 8.44 求一个示例。",
+        }
+    )
+    result = TheoremExtractionPipeline(FakeExtractor([candidate])).run(
+        [_markdown(tmp_path / "chunk.md")],
+        tmp_path / "pipeline",
+    )
+    assert result.theorem_ids == ()
+    assert result.rejected_candidate_count == 1
+    manifest = json.loads((result.run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["chunks"][0]["rejected_candidates"] == [
+        {
+            "label": "例 8.44",
+            "reason": "worked_example_not_theorem_like",
+        }
+    ]
+
+
+def test_pipeline_rejects_bad_overlap_variant_when_valid_record_exists(
+    tmp_path: Path,
+) -> None:
+    markdown = _markdown(tmp_path / "chunk.md")
+    output = tmp_path / "pipeline"
+    first = TheoremExtractionPipeline(FakeExtractor([_complete_candidate()])).run(
+        [markdown],
+        output,
+    )
+    invalid_overlap = _complete_candidate().model_copy(
+        update={
+            "statement_verbatim": (
+                "Proposition 1.1. If $n$ is an integer, then a different claim holds."
+            )
+        }
+    )
+    second = TheoremExtractionPipeline(FakeExtractor([invalid_overlap])).run(
+        [markdown],
+        output,
+    )
+    assert len(first.theorem_ids) == 1
+    assert second.theorem_ids == ()
+    assert second.rejected_candidate_count == 1
+    manifest = json.loads((second.run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["chunks"][0]["rejected_candidates"] == [
+        {
+            "label": "Proposition 1.1.",
+            "reason": "overlap_candidate_not_grounded_existing_record",
+        }
+    ]
+
+
+def test_pipeline_rejects_ungrounded_non_numbered_named_property(
+    tmp_path: Path,
+) -> None:
+    candidate = _omitted_candidate().model_copy(
+        update={
+            "kind": ResultKind.IDENTITY,
+            "label_verbatim": "Integer convention.",
+            "statement_verbatim": "Integer convention. This wording was inferred.",
+        }
+    )
+    result = TheoremExtractionPipeline(FakeExtractor([candidate])).run(
+        [_markdown(tmp_path / "chunk.md")],
+        tmp_path / "pipeline",
+    )
+    assert result.theorem_ids == ()
+    assert result.rejected_candidate_count == 1
+    manifest = json.loads((result.run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["chunks"][0]["rejected_candidates"] == [
+        {
+            "label": "Integer convention.",
+            "reason": "non_numbered_candidate_not_grounded",
+        }
+    ]
+
+
 def test_pipeline_ignores_running_headers_inside_cross_page_proof(
     tmp_path: Path,
 ) -> None:
@@ -302,6 +381,7 @@ Proof. First sentence.
 <!-- pdf-page: 11 -->
 ## PDF page 11
 **12 $\\quad$ PROLOGUE**
+**16** PROLOGUE
 Second sentence. ∎
 """,
         encoding="utf-8",
@@ -328,6 +408,181 @@ Second sentence. ∎
         tmp_path / "pipeline",
     )
     assert result.status_counts == {"complete": 1}
+
+
+def test_pipeline_ignores_chinese_running_headers_inside_cross_page_statement(
+    tmp_path: Path,
+) -> None:
+    markdown = tmp_path / "cross-page-chinese.md"
+    markdown.write_text(
+        """---
+document_id: sample-book
+---
+<!-- pdf-page: 63 -->
+## PDF page 63
+定义 8.1 设 $D$ 是非空集，则称 $f$ 是定义在 $D$ 上的函数。$P$ 称为
+<!-- pdf-page: 64 -->
+## PDF page 64
+58 | 第 8 章 多元函数的微分学
+函数的自变量。
+<!-- pdf-page: 65 -->
+## PDF page 65
+8.2 多元函数的极限与连续 | 59
+下一节正文。
+""",
+        encoding="utf-8",
+    )
+    candidate = _omitted_candidate().model_copy(
+        update={
+            "source_pages": [63, 64],
+            "kind": ResultKind.DEFINITION,
+            "label_verbatim": "定义 8.1",
+            "statement_verbatim": (
+                "定义 8.1 设 $D$ 是非空集，则称 $f$ 是定义在 $D$ 上的函数。"
+                "$P$ 称为 函数的自变量。"
+            ),
+            "proof_status": ProofStatus.NOT_APPLICABLE,
+            "omission": ProofOmission(
+                is_omitted=False,
+                reason=OmissionReason.NONE,
+                marker_verbatim="",
+                note="",
+            ),
+        }
+    )
+    result = TheoremExtractionPipeline(FakeExtractor([candidate])).run(
+        [markdown],
+        tmp_path / "pipeline",
+    )
+    assert result.status_counts == {"not_applicable": 1}
+
+
+def test_pipeline_ignores_generated_ocr_warnings_inside_source_proof(
+    tmp_path: Path,
+) -> None:
+    markdown = tmp_path / "proof-with-ocr-warning.md"
+    markdown.write_text(
+        """---
+document_id: sample-book
+---
+<!-- pdf-page: 77 -->
+## PDF page 77
+定理 8.3 若两个偏导数连续，则函数可微。
+证 先应用中值定理。
+*(注：原文中此处有轻微印刷不清，按标准格式处理)*
+> OCR warning: Potential OCR ambiguity in the formula
+---
+<!-- pdf-page: 78 -->
+## PDF page 78
+---|---
+因此函数可微。∎
+""",
+        encoding="utf-8",
+    )
+    candidate = _complete_candidate().model_copy(
+        update={
+            "source_pages": [77, 78],
+            "label_verbatim": "定理 8.3",
+            "statement_verbatim": "定理 8.3 若两个偏导数连续，则函数可微。",
+            "proof_verbatim": "证 先应用中值定理。 因此函数可微。∎",
+            "proof_steps": [
+                ProofStep(
+                    order=1,
+                    role=ProofStepRole.OTHER,
+                    text_verbatim="证 先应用中值定理。 因此函数可微。∎",
+                    source_pages=[77, 78],
+                )
+            ],
+            "context_items": [],
+        }
+    )
+    result = TheoremExtractionPipeline(FakeExtractor([candidate])).run(
+        [markdown],
+        tmp_path / "pipeline",
+    )
+    assert result.status_counts == {"complete": 1}
+
+
+def test_pipeline_normalizes_bold_label_after_unclosed_ocr_math(
+    tmp_path: Path,
+) -> None:
+    markdown = tmp_path / "unclosed-math-before-result.md"
+    markdown.write_text(
+        """---
+document_id: sample-book
+---
+<!-- pdf-page: 10 -->
+## PDF page 10
+Damaged earlier OCR: $$x = 1
+**Proposition 1.1.** If $n$ is an integer, then $n=n$.
+Proof. Reflexivity gives $n=n$. This proves the claim. ∎
+""",
+        encoding="utf-8",
+    )
+    result = TheoremExtractionPipeline(
+        FakeExtractor([_complete_candidate()])
+    ).run([markdown], tmp_path / "pipeline")
+    assert result.status_counts == {"complete": 1}
+
+
+def test_pipeline_clears_inferred_title_not_printed_in_statement(
+    tmp_path: Path,
+) -> None:
+    candidate = _complete_candidate().model_copy(
+        update={"title_verbatim": "Reflexivity theorem"}
+    )
+    output = tmp_path / "pipeline"
+    result = TheoremExtractionPipeline(FakeExtractor([candidate])).run(
+        [_markdown(tmp_path / "chunk.md")],
+        output,
+    )
+    payload = json.loads(
+        (
+            output
+            / result.theorem_ids[0]
+            / "extraction"
+            / "attempt-001"
+            / "theorem.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert payload["result"]["title_verbatim"] == ""
+    assert "cleared the optional title field" in payload["result"]["uncertainties"][-1]
+
+
+def test_pipeline_removes_ungrounded_optional_context_item(
+    tmp_path: Path,
+) -> None:
+    invalid_context = ContextItem(
+        relation=ContextRelation.OTHER,
+        label_verbatim="Invented context",
+        text_verbatim="This context sentence was not printed.",
+        source_pages=[10],
+        relevance="Would have supplied extra background.",
+    )
+    candidate = _complete_candidate().model_copy(
+        update={
+            "context_items": [
+                *_complete_candidate().context_items,
+                invalid_context,
+            ]
+        }
+    )
+    output = tmp_path / "pipeline"
+    result = TheoremExtractionPipeline(FakeExtractor([candidate])).run(
+        [_markdown(tmp_path / "chunk.md")],
+        output,
+    )
+    payload = json.loads(
+        (
+            output
+            / result.theorem_ids[0]
+            / "extraction"
+            / "attempt-001"
+            / "theorem.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert len(payload["result"]["context_items"]) == 1
+    assert "removed 1 optional context item" in payload["result"]["uncertainties"][-1]
 
 
 def test_pipeline_collapses_incomplete_step_coverage_to_verbatim_step(
