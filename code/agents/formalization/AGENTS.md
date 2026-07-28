@@ -1,6 +1,6 @@
 # Formalization Agent Instructions
 
-This directory belongs to Agent 2 of [[docs/architecture/Three-Agent Pipeline]].
+This directory belongs to Agent 2 of [[docs/architecture/Four-Agent Pipeline]].
 
 ## Mission
 

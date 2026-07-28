@@ -12,8 +12,7 @@ updated: 2026-07-27
 Convert textbook PDFs into traceable Lean 4 + Mathlib theorems and a
 cross-linked LaTeX textbook through exactly four specialized agents. The
 orchestration layer only moves artifacts and records state; it is not a fifth
-reasoning agent. The filename is retained for compatibility with existing vault
-links created before Agent 4 was added.
+reasoning agent.
 
 ```text
 PDF source

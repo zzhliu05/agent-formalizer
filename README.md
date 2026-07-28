@@ -54,7 +54,7 @@ flowchart LR
 - 将自然语言材料、审核结论与对应 Lean 源码打包；
 - 入口与输出结构见 [`code/agents/publication/README.md`](code/agents/publication/README.md)。
 
-完整设计见 [`docs/architecture/Three-Agent Pipeline.md`](docs/architecture/Three-Agent%20Pipeline.md)。文件名保留了早期“三 Agent”阶段的历史名称，文档内容现已描述完整的四 Agent 流程。
+完整设计见 [`docs/architecture/Four-Agent Pipeline.md`](docs/architecture/Four-Agent%20Pipeline.md)。
 
 ## 当前进度
 
@@ -118,11 +118,6 @@ Agent 1 的安装方式及 `GEMINI_API_KEY`、`GPT55_API_KEY` 配置见其目录
 - 模型生成的语义判定不能覆盖确定性的机械失败；
 - 受版权约束的教材 PDF 与生成片段默认保持本地；
 - 测试结果、报告、演示文稿和临时文件默认不发布。
-
-## Contributors
-
-- [zzhliu05](https://github.com/zzhliu05) — 项目发起、数学与工程方向
-- [OpenAI Codex](https://github.com/apps/openai-codex) — 架构协作、实现与文档
 
 ## 项目状态
 

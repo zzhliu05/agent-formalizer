@@ -11,7 +11,7 @@ Process: P001
 
 This note records the deduplicated scope and execution status for formalizing
 all current Agent 1 test data that is suitable for proof generation. It links
-to [[../docs/architecture/Three-Agent Pipeline]] and follows the Agent 2
+to [[../docs/architecture/Four-Agent Pipeline]] and follows the Agent 2
 boundary documented in [[2026-07-24 Agent 2 Lean Proof Generation]].
 
 ## Corpus Inventory

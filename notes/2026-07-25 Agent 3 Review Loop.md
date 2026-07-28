@@ -9,7 +9,7 @@ updated: 2026-07-25
 # Agent 3 Independent Review and Revision Loop
 
 Agent 3 is implemented under `code/agents/review/` as the independent
-acceptance boundary in [[../docs/architecture/Three-Agent Pipeline]].
+acceptance boundary in [[../docs/architecture/Four-Agent Pipeline]].
 
 ## Review design
 
