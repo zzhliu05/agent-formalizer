@@ -58,4 +58,4 @@ polling, result download, or local compilation of an Aristotle result.
 Related: [[2026-07-24 Project-Isolated Aristotle CLI]] -
 [[../code/agents/formalization/README]] -
 [[2026-07-24 Agent 2 Lean Environment Setup]] -
-[[../docs/architecture/Three-Agent Pipeline]]
+[[../docs/architecture/Four-Agent Pipeline]]

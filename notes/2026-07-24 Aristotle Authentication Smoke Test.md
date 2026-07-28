@@ -44,4 +44,4 @@ Mathlib v4.28.0 environment, and scan it for `sorry`, `admit`, and `sorryAx`.
 
 Related: [[2026-07-24 Project-Isolated Aristotle CLI]] -
 [[../code/agents/formalization/README]] -
-[[../docs/architecture/Three-Agent Pipeline]]
+[[../docs/architecture/Four-Agent Pipeline]]

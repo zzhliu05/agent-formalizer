@@ -49,5 +49,5 @@ This milestone configures only the Lean 4 + Mathlib environment. It does not yet
 implement Harmonic Aristotle authentication, task submission, polling,
 artifact generation, or theorem-package translation.
 
-Related: [[../docs/architecture/Three-Agent Pipeline]] -
+Related: [[../docs/architecture/Four-Agent Pipeline]] -
 [[../code/agents/formalization/README]]

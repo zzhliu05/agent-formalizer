@@ -2,18 +2,25 @@
 type: process-log
 status: active
 created: 2026-07-22
-updated: 2026-07-25
+updated: 2026-07-28
 ---
 
 # Process Log
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
 
+## 2026-07-28 - Four-Agent Naming Standardized
+
+Status: resolved
+Links: [[../README]] - [[../docs/architecture/Four-Agent Pipeline]]
+Summary: Standardized the architecture specification and all active vault references on Four-Agent naming, removed the README contributor section, and moved Codex attribution to Git commit co-authorship metadata.
+Next: Use Four-Agent naming for future architecture pages, notes, and links.
+
 ## 2026-07-25 - Agent 3 Review and Revision Loop Implemented
 
 Status: active
 Process: P001
-Links: [[../notes/2026-07-25 Agent 3 Review Loop]] - [[../code/agents/review/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../notes/2026-07-25 Agent 3 Review Loop]] - [[../code/agents/review/README]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Implemented an isolated Lean-only back-translation stage, delayed source comparison, independent build/placeholder/axiom gates, structured revision requests, Agent 3 Aristotle follow-ups, and Agent 2 validation of revised archives. A real Folland Proposition 0.6 cycle rejected a mechanically valid but method-mismatched proof, revised it through Aristotle, revalidated it in Agent 2, and accepted the fresh Agent 3 review with no placeholders or unapproved axioms.
 Next: Review the remaining 19 proof-bearing Folland handoffs; route incomplete source-proof evidence to Agent 1 and run complete-source mismatches through the revision loop.
 
@@ -21,7 +28,7 @@ Next: Review the remaining 19 proof-bearing Folland handoffs; route incomplete s
 
 Status: active
 Process: P001
-Links: [[../notes/2026-07-24 Agent 1 Test Corpus Formalization Batch]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../notes/2026-07-24 Agent 1 Test Corpus Formalization Batch]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: All 20 proof-bearing records in the canonical Agent 1 test corpus reached `ready_for_review` after real Aristotle generation and local Lean 4.28.0 validation; the source axiom 0.4 remains declaration-only. Added archive-preserving local `revalidate` support after controlling a Mathlib memory spike, and a full hash-chain audit passed with no persisted credential.
 Next: Run Agent 3 back-translation, source-statement comparison, placeholder and axiom inspection across all 20 handoffs, prioritizing partial, by-reference, and uncertain source records.
 
@@ -29,7 +36,7 @@ Next: Run Agent 3 back-translation, source-statement comparison, placeholder and
 
 Status: resolved
 Process: P001
-Links: [[../notes/2026-07-24 Agent 1 Test Corpus Formalization Batch]] - [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../notes/2026-07-24 Agent 1 Test Corpus Formalization Batch]] - [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Deduplicated all Agent 1 private test outputs into 21 canonical GPT-5.5 records covering 0.4–0.24, classified the source axiom 0.4 as declaration-only, and prepared all 20 proof-bearing targets for Agent 2. Seventeen live Aristotle tasks were initially accepted; three capacity-limited submissions remain safe to retry.
 Next: Completed by the newer batch-formalization entry above.
 
@@ -37,7 +44,7 @@ Next: Completed by the newer batch-formalization entry above.
 
 Status: superseded
 Process: P001
-Links: [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Submitted the private Folland Proposition 0.16 package to Aristotle with questions disabled. A transport interruption was recovered through the same Project/Task IDs; the downloaded theorem `folland_real_analysis_0_16` passed protected-file and prohibited-placeholder gates plus local Lean 4.28.0 validation, producing a `ready_for_review` Agent 3 handoff.
 Next: Superseded by the complete 20-target batch above.
 
@@ -45,7 +52,7 @@ Next: Superseded by the complete 20-target batch above.
 
 Status: resolved
 Process: P001
-Links: [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../notes/2026-07-24 Agent 2 Lean Proof Generation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Implemented non-interactive Aristotle submission with agent questions disabled, resumable polling, safe result extraction, protected-input and Lean-placeholder gates, local Lean kernel validation, and an exact Agent 3 handoff. Fifteen tests pass and the production local checker passed against the private Folland preparation.
 Next: Completed and exercised by the newer full-batch entry above.
 
@@ -53,7 +60,7 @@ Next: Completed and exercised by the newer full-batch entry above.
 
 Status: resolved
 Process: P001
-Links: [[../notes/2026-07-24 Agent 2 Aristotle Preparation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../notes/2026-07-24 Agent 2 Aristotle Preparation]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Implemented strict Agent 1 theorem-package reading, immutable pointer/hash validation, proof-target safety gates, and offline generation of an Aristotle `submit --project-dir` prompt plus a pinned Lean project. Eight tests pass, and a private Folland proposition with a partial printed proof produced a sanitized preparation bundle without a remote submission.
 Next: Completed by the later first-candidate and full-batch milestones above.
 
@@ -69,7 +76,7 @@ Next: Completed by the later live-proof and full-batch milestones above.
 
 Status: resolved
 Process: P001
-Links: [[../notes/2026-07-24 Project-Isolated Aristotle CLI]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../notes/2026-07-24 Project-Isolated Aristotle CLI]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Added a project-level `pyproject.toml` and `uv.lock` pinning `aristotlelib 2.1.0`, created the ignored `.venv`, and validated that `uv run --locked aristotle` resolves the project executable rather than relying on the global tool.
 Next: Completed by the later authentication and generation milestones above.
 
@@ -77,7 +84,7 @@ Next: Completed by the later authentication and generation milestones above.
 
 Status: resolved
 Process: P001
-Links: [[../notes/2026-07-24 Aristotle CLI Setup]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../notes/2026-07-24 Aristotle CLI Setup]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Installed `aristotlelib 2.1.0` globally through `uv`, verified the CLI executable, version, top-level help, and formalize/submit contracts, and established `ARISTOTLE_API_KEY` as the credential boundary without storing or testing a key.
 Next: Completed by the later project-isolated authentication milestone above.
 
@@ -85,7 +92,7 @@ Next: Completed by the later project-isolated authentication milestone above.
 
 Status: resolved
 Process: P001
-Links: [[../notes/2026-07-24 Agent 2 Lean Environment Setup]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../notes/2026-07-24 Agent 2 Lean Environment Setup]] - [[../code/agents/formalization/README]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Pinned Agent 2 to Lean 4.28.0 and Mathlib v4.28.0, completed all 8,010 cache downloads using an E-drive cache after Windows tar-encoding and C-drive space issues, and passed a 504-job narrow-import smoke build.
 Next: Completed by the later Agent 2 generation milestones above.
 
@@ -93,7 +100,7 @@ Next: Completed by the later Agent 2 generation milestones above.
 
 Status: active
 Process: P001
-Links: [[../notes/2026-07-23 GPT-5.5 Theorem Extraction Test]] - [[../code/agents/extraction/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../notes/2026-07-23 GPT-5.5 Theorem Extraction Test]] - [[../code/agents/extraction/README]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Added a separate ShanghaiTech GPT-5.5 Markdown-to-theorem adapter with strict source-evidence gates, explicit proof-omission states, complete-proof coverage checks, and transactional chunk writes. A private Folland pages 19–27 test recovered the continuous numbered range 0.4–0.24 as 21 records; 16 proofs were complete, three explicitly contained omitted details, and two were proofs by reference.
 Next: Add deterministic OCR math checks and an extraction evaluation set with human-verified statement/proof boundaries before scaling to a full chapter.
 
@@ -109,7 +116,7 @@ Next: Add deterministic Markdown/math delimiter checks before expanding the OCR 
 
 Status: active
 Process: P001
-Links: [[../code/agents/extraction/README]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../code/agents/extraction/README]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Removed theorem identification, candidate recovery, prerequisite inference, and theorem-package generation from the active Gemini path. Agent 1 now emits only immutable, page-anchored Markdown chunks and a run manifest.
 Next: Evaluate Markdown fidelity on representative textbook pages before choosing a separate theorem/context extractor.
 
@@ -125,15 +132,15 @@ Next: Rotate the disclosed API key, then evaluate more pages and add extraction-
 
 Status: superseded
 Process: P001
-Links: [[../code/agents/extraction/README]] - [[papers/CC-OCR V2]] - [[../docs/architecture/Three-Agent Pipeline]]
+Links: [[../code/agents/extraction/README]] - [[papers/CC-OCR V2]] - [[../docs/architecture/Four-Agent Pipeline]]
 Summary: Implemented the first PDF OCR and theorem-context extraction agent with Gemini native PDF input, structured outputs, overlapping page chunks, stable theorem IDs, evidence-aware prerequisites, immutable attempts, and secret-safe configuration.
 Next: Historical implementation; use the newer Markdown-only OCR stage above.
 
-## 2026-07-22 - Three-Agent Pipeline Defined
+## 2026-07-22 - Four-Agent Pipeline Defined
 
 Status: active
 Process: P001
-Links: [[../docs/architecture/Three-Agent Pipeline]] - [[index]]
+Links: [[../docs/architecture/Four-Agent Pipeline]] - [[index]]
 Summary: Split the initial system into PDF OCR/context extraction, Lean formalization through Harmonic Aristotle, and independent semantic/formal review. Defined artifact handoffs, revision routing, and the no-`sorryAx` acceptance gate.
 Next: Choose the first textbook PDF and implement the Agent 1 extraction contract.
 

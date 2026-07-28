@@ -1,6 +1,6 @@
 # Agent 1 Extraction Instructions
 
-This directory belongs to Agent 1 of [[docs/architecture/Three-Agent Pipeline]].
+This directory belongs to Agent 1 of [[docs/architecture/Four-Agent Pipeline]].
 
 ## Mission
 
