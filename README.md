@@ -122,7 +122,7 @@ Agent 1 的安装方式及 `GEMINI_API_KEY`、`GPT55_API_KEY` 配置见其目录
 ## Contributors
 
 - [zzhliu05](https://github.com/zzhliu05) — 项目发起、数学与工程方向
-- [OpenAI Codex](https://openai.com/codex/) — 架构协作、实现与文档
+- [OpenAI Codex](https://github.com/apps/openai-codex) — 架构协作、实现与文档
 
 ## 项目状态
 
