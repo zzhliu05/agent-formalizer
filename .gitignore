@@ -22,3 +22,12 @@ outputs/private-tests/
 
 # Generated pipeline bundles can contain copyrighted source excerpts.
 outputs/pipeline/
+
+# Generated test reports and presentation decks are local-only.
+outputs/reports/
+docs/reports/
+**/test-results/
+**/slides/
+*.ppt
+*.pptx
+*.odp

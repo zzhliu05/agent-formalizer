@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .layout import parse_attempt_name
 from .reader import sha256_bytes
 
 
@@ -64,7 +65,7 @@ def _resolve_latest(path: Path) -> tuple[Path, dict[str, Any]]:
         raise PreparationReadError("preparation latest path escapes its directory")
     if target.name != "request.json":
         raise PreparationReadError("preparation latest path must resolve to request.json")
-    if target.parent.name != f"attempt-{pointer['attempt']:03d}":
+    if parse_attempt_name(target.parent.name) != pointer["attempt"]:
         raise PreparationReadError(
             "preparation latest attempt does not match its target directory"
         )
@@ -88,12 +89,16 @@ def _resolve_input(input_path: Path) -> tuple[Path, dict[str, Any] | None]:
     latest = path / "latest.json"
     if latest.is_file():
         return _resolve_latest(latest)
+    compact = path / "prep" / "latest.json"
+    if compact.is_file():
+        return _resolve_latest(compact)
     nested = path / "formalization" / "preparation" / "latest.json"
     if nested.is_file():
         return _resolve_latest(nested)
     raise PreparationReadError(
         "directory must contain request.json, latest.json, or "
-        "formalization/preparation/latest.json"
+        "prep/latest.json (compact) or formalization/preparation/latest.json "
+        "(legacy)"
     )
 
 

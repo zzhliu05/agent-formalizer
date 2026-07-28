@@ -4,8 +4,24 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-Verdict = Literal["accepted", "needs_reformalization", "needs_reextraction"]
+ComparisonVerdict = Literal[
+    "accepted",
+    "needs_reformalization",
+    "needs_reextraction",
+]
+Verdict = Literal[
+    "accepted",
+    "accepted_declaration",
+    "needs_reformalization",
+    "needs_reextraction",
+]
 MethodMatch = Literal["match", "mismatch", "unverifiable"]
+SourceMethodEvidence = Literal[
+    "complete",
+    "partial_but_sufficient",
+    "reference_only_sufficient",
+    "insufficient",
+]
 
 
 class StrictModel(BaseModel):
@@ -60,8 +76,10 @@ class SemanticComparison(StrictModel):
     proof_method_match: MethodMatch
     proof_step_correspondence: list[str]
     source_proof_complete: bool
+    source_method_evidence: SourceMethodEvidence
+    omitted_detail_notes: list[str]
     issues: list[ComparisonIssue]
-    verdict: Verdict
+    verdict: ComparisonVerdict
     rationale: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -82,8 +100,10 @@ class SemanticComparison(StrictModel):
                 raise ValueError("accepted comparison requires every statement check")
             if self.proof_method_match != "match":
                 raise ValueError("accepted comparison requires matching proof methods")
-            if not self.source_proof_complete:
-                raise ValueError("accepted comparison requires a complete source proof")
+            if self.source_method_evidence == "insufficient":
+                raise ValueError(
+                    "accepted comparison requires sufficient printed method evidence"
+                )
             if has_error:
                 raise ValueError("accepted comparison cannot contain error issues")
         if (
@@ -92,6 +112,13 @@ class SemanticComparison(StrictModel):
         ):
             raise ValueError(
                 "an unverifiable source proof method must route to needs_reextraction"
+            )
+        if (
+            self.source_method_evidence == "insufficient"
+            and self.verdict != "needs_reextraction"
+        ):
+            raise ValueError(
+                "insufficient printed method evidence must route to needs_reextraction"
             )
         return self
 
