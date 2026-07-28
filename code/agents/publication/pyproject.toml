@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "formal-math-publication-agent"
+version = "0.1.0"
+description = "Accepted theorem-to-ElegantBook LaTeX publication agent"
+requires-python = ">=3.11"
+dependencies = [
+  "formal-math-review-agent",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9"]
+
+[project.scripts]
+publication-agent = "publication_agent.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/publication_agent"]
+
+[tool.uv.sources]
+formal-math-review-agent = { path = "../review", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+

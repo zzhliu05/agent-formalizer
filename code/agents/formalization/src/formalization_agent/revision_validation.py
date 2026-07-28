@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
 from .candidate_validation import (
     BuildRunner,
     CandidateValidationError,
+    compact_candidate_tree,
     run_local_lean_check,
     safe_extract_tar,
 )
@@ -24,6 +26,7 @@ from .generator import (
     _write_build_log,
     _write_json_atomic,
 )
+from .layout import iter_attempt_dirs
 from .reader import sha256_bytes
 
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -34,6 +37,75 @@ class RevisionValidationResult:
     generation: GenerationResult
     revision_request_sha256: str
     parent_run_path: Path
+
+
+def _find_descendant_checkpoint(
+    generation_root: Path,
+    reviewed_parent_dir: Path,
+    *,
+    project_id: str,
+    task_id: str,
+) -> Path | None:
+    """Return an in-project checkpoint descended from the reviewed run."""
+    reviewed_parent = reviewed_parent_dir.resolve()
+    runs: dict[Path, dict[str, object]] = {}
+    for attempt_dir in iter_attempt_dirs(generation_root):
+        run_path = attempt_dir / "run.json"
+        if not run_path.is_file():
+            continue
+        try:
+            payload = json.loads(run_path.read_text(encoding="utf-8-sig"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if isinstance(payload, dict):
+            runs[run_path.parent.resolve()] = payload
+
+    matching = [
+        (run_dir, run)
+        for run_dir, run in runs.items()
+        if run.get("aristotle", {}).get("project_id") == project_id
+        and run.get("aristotle", {}).get("task_id") == task_id
+        and run.get("state") in {"validation_failed", "ready_for_review"}
+        and (run_dir / "result.tar.gz").is_file()
+    ]
+    for run_dir, run in matching:
+        seen: set[Path] = set()
+        current_dir = run_dir
+        current = run
+        while current_dir not in seen:
+            if current_dir == reviewed_parent:
+                return run_dir
+            seen.add(current_dir)
+            parent_text = current.get("revision", {}).get("parent_run_json")
+            if not isinstance(parent_text, str):
+                break
+            parent_dir = Path(parent_text).resolve().parent
+            if parent_dir == reviewed_parent:
+                return run_dir
+            next_run = runs.get(parent_dir)
+            if next_run is None:
+                break
+            current_dir, current = parent_dir, next_run
+    return None
+
+
+def _is_descendant_checkpoint(
+    generation_root: Path,
+    reviewed_parent_dir: Path,
+    *,
+    project_id: str,
+    task_id: str,
+) -> bool:
+    """Confirm that a task is an in-project revision descendant of a reviewed run."""
+    return (
+        _find_descendant_checkpoint(
+            generation_root,
+            reviewed_parent_dir,
+            project_id=project_id,
+            task_id=task_id,
+        )
+        is not None
+    )
 
 
 def validate_revision_archive(
@@ -73,7 +145,20 @@ def validate_revision_archive(
     if revision.get("current_project_id") != project_id:
         raise GenerationError("revision request project_id does not match")
     parent_task_id = parent_run.get("aristotle", {}).get("task_id")
-    if revision.get("current_task_id") != parent_task_id:
+    current_task_id = revision.get("current_task_id")
+    lineage_parent_dir = parent_run_dir
+    if current_task_id != parent_task_id:
+        lineage_parent_dir = (
+            _find_descendant_checkpoint(
+                generation_root,
+                parent_run_dir,
+                project_id=project_id,
+                task_id=current_task_id,
+            )
+            if isinstance(current_task_id, str)
+            else None
+        )
+    if lineage_parent_dir is None:
         raise GenerationError("revision request task_id does not match reviewed parent")
     for field in (
         "review_json_sha256",
@@ -152,8 +237,9 @@ def validate_revision_archive(
     run["state"] = "revision_received"
     run["revision"] = {
         "owner": "agent3",
-        "parent_run_json": str((parent_run_dir / "run.json").resolve()),
-        "parent_task_id": parent_run.get("aristotle", {}).get("task_id"),
+        "parent_run_json": str((lineage_parent_dir / "run.json").resolve()),
+        "parent_task_id": current_task_id,
+        "reviewed_parent_run_json": str((parent_run_dir / "run.json").resolve()),
         "revision_request_path": str(revision_path),
         "revision_request_sha256": revision_hash,
     }
@@ -173,14 +259,26 @@ def validate_revision_archive(
     copied_archive = run_dir / "result.tar.gz"
     shutil.copyfile(archive_path, copied_archive)
     archive_hash = sha256_bytes(copied_archive.read_bytes())
-    extracted_root = run_dir / "result"
     try:
-        safe_extract_tar(copied_archive, extracted_root)
+        if generation_root.name == "gen":
+            temporary_tree = run_dir / f".extract-{uuid.uuid4().hex}"
+            try:
+                safe_extract_tar(copied_archive, temporary_tree)
+                compact_candidate_tree(temporary_tree, run_dir / "lean")
+            except Exception:
+                if temporary_tree.exists():
+                    shutil.rmtree(temporary_tree)
+                raise
+            tree_name = "lean"
+        else:
+            safe_extract_tar(copied_archive, run_dir / "result")
+            tree_name = "result"
         run["state"] = "downloaded"
         run["result"] = {
             "archive": "result.tar.gz",
             "archive_sha256": archive_hash,
             "archive_size_bytes": copied_archive.stat().st_size,
+            "tree": tree_name,
         }
         run["updated_at"] = _now()
         _write_json_atomic(run_dir / "run.json", run)

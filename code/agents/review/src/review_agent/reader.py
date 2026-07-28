@@ -9,6 +9,7 @@ from formalization_agent.preparation_reader import (
     LoadedPreparation,
     load_preparation,
 )
+from formalization_agent.layout import theorem_root_for_generation
 from formalization_agent.reader import (
     LoadedTheoremPackage,
     load_theorem_package,
@@ -96,14 +97,20 @@ def load_candidate(handoff_input: str | Path) -> LoadedCandidate:
     if preparation_relative.is_absolute():
         raise ReviewReadError("preparation path must be relative")
     preparation_path = (path.parent / preparation_relative).resolve()
-    formalization_root = path.parent.parent.parent.resolve()
-    if (
-        formalization_root.name != "formalization"
-        or not preparation_path.is_relative_to(formalization_root)
-        or "preparation" not in preparation_path.parts
-    ):
-        raise ReviewReadError("preparation path escapes the theorem formalization tree")
+    generation_root = path.parent.parent.resolve()
+    try:
+        theorem_root = theorem_root_for_generation(generation_root)
+    except ValueError as exc:
+        raise ReviewReadError(str(exc)) from exc
+    allowed_preparation_roots = {
+        (theorem_root / "prep").resolve(),
+        (theorem_root / "formalization" / "preparation").resolve(),
+    }
+    if not preparation_path.is_relative_to(theorem_root):
+        raise ReviewReadError("preparation path escapes the theorem tree")
     preparation = load_preparation(preparation_path)
+    if preparation.attempt_dir.parent.resolve() not in allowed_preparation_roots:
+        raise ReviewReadError("preparation path is outside a supported Agent 2 layout")
     if preparation.theorem_id != theorem_id:
         raise ReviewReadError("preparation theorem_id does not match handoff")
 

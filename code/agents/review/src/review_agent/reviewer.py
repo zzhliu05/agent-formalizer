@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -9,7 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from formalization_agent.candidate_validation import BuildRunner, run_local_lean_check
-from formalization_agent.reader import sha256_bytes
+from formalization_agent.layout import theorem_root_for_generation
+from formalization_agent.reader import (
+    LoadedTheoremPackage,
+    load_theorem_package,
+    sha256_bytes,
+)
 
 from .lean_audit import audit_candidate
 from .models import (
@@ -76,12 +82,11 @@ def _next_attempt(root: Path) -> int:
 
 def _default_review_root(candidate: LoadedCandidate) -> Path:
     generation_root = candidate.handoff_path.parent.parent
-    if generation_root.name != "generation":
-        raise ReviewError("Agent 2 handoff is not under a generation directory")
-    formalization_root = generation_root.parent
-    if formalization_root.name != "formalization":
-        raise ReviewError("Agent 2 generation is not under formalization")
-    return formalization_root.parent / "review"
+    try:
+        theorem_root = theorem_root_for_generation(generation_root)
+    except ValueError as exc:
+        raise ReviewError(str(exc)) from exc
+    return theorem_root / "review"
 
 
 def _mechanical_issues(audit: MechanicalAudit) -> list[ComparisonIssue]:
@@ -168,12 +173,128 @@ def _final_verdict(
     audit: MechanicalAudit,
     comparison: SemanticComparison,
     source_proof_status: str,
+    source_kind: str,
 ) -> Verdict:
     if not audit.passed:
         return "needs_reformalization"
-    if source_proof_status != "complete":
+    if source_kind == "axiom" and source_proof_status == "not_applicable":
+        statement_checks = (
+            comparison.statement_match,
+            comparison.variables_match,
+            comparison.domains_match,
+            comparison.hypotheses_match,
+            comparison.quantifiers_match,
+            comparison.conclusion_match,
+            comparison.logical_direction_match,
+            comparison.edge_cases_match,
+        )
+        statement_blockers = any(
+            issue.severity == "error"
+            and issue.aspect
+            not in {"proof_method", "proof_steps", "source_completeness"}
+            for issue in comparison.issues
+        )
+        if (
+            all(statement_checks)
+            and not statement_blockers
+            and comparison.proof_method_match == "unverifiable"
+            and comparison.source_method_evidence == "insufficient"
+        ):
+            return "accepted_declaration"
+        return "needs_reextraction"
+    expected_evidence = {
+        "complete": "complete",
+        "partial": "partial_but_sufficient",
+        "left_to_reader": "partial_but_sufficient",
+        "by_reference": "reference_only_sufficient",
+    }.get(source_proof_status)
+    if expected_evidence is None:
+        return "needs_reextraction"
+    if (
+        comparison.verdict == "accepted"
+        and comparison.source_method_evidence != expected_evidence
+    ):
         return "needs_reextraction"
     return comparison.verdict
+
+
+def _normalize_complete_source_evidence(
+    comparison: SemanticComparison,
+    source_proof_status: str,
+) -> SemanticComparison:
+    if (
+        source_proof_status == "complete"
+        and comparison.verdict == "accepted"
+        and comparison.source_proof_complete
+        and comparison.source_method_evidence != "complete"
+    ):
+        return comparison.model_copy(
+            update={"source_method_evidence": "complete"}
+        )
+    return comparison
+
+
+def _source_context_with_citations(
+    source: LoadedTheoremPackage,
+) -> tuple[list[str], list[dict[str, Any]]]:
+    result = source.package.result
+    context = [item.text_verbatim for item in result.context_items]
+    citations: list[dict[str, Any]] = []
+    if result.proof_status != "by_reference":
+        return context, citations
+
+    reference_text = " ".join(
+        value
+        for value in (
+            result.proof_verbatim,
+            result.omission.marker_verbatim,
+            result.omission.note,
+        )
+        if value
+    )
+    numbers = {
+        int(value)
+        for value in re.findall(
+            r"\b(?:Proposition|Theorem|Corollary|Lemma)\s+0\.(\d+)\b",
+            reference_text,
+            flags=re.IGNORECASE,
+        )
+    }
+    if not numbers:
+        return context, citations
+
+    try:
+        corpus_root = source.theorem_json_path.parents[3]
+    except IndexError:
+        return context, citations
+    for number in sorted(numbers):
+        matches = [
+            path
+            for path in corpus_root.iterdir()
+            if path.is_dir()
+            and path != source.theorem_json_path.parents[2]
+            and re.search(rf"-0-{number}(?:-|$)", path.name)
+        ]
+        if len(matches) != 1:
+            continue
+        cited = load_theorem_package(matches[0])
+        cited_result = cited.package.result
+        if not cited_result.record_complete_in_chunk:
+            continue
+        context.append(
+            f"Cited result {cited_result.label_verbatim}\n"
+            f"{cited_result.statement_verbatim}"
+        )
+        citations.append(
+            {
+                "reference_number": f"0.{number}",
+                "theorem_id": cited.package.theorem_id,
+                "theorem_json_sha256": cited.theorem_json_sha256,
+                "source_pages": cited_result.source_pages,
+                "statement_only": True,
+            }
+        )
+    return context, citations
 
 
 def _review_markdown(
@@ -216,6 +337,8 @@ Proof method: {backtranslation.proof_method_summary}
 - Statement match: `{str(comparison.statement_match).lower()}`
 - Proof method: `{comparison.proof_method_match}`
 - Source proof complete: `{str(comparison.source_proof_complete).lower()}`
+- Source method evidence: `{comparison.source_method_evidence}`
+- Review mode: `{"declaration-only" if verdict == "accepted_declaration" else "proof-method"}`
 
 {issue_lines}
 
@@ -245,7 +368,7 @@ def review_candidate(
     attempt = _next_attempt(root)
     attempt_name = f"attempt-{attempt:03d}"
     attempt_dir = root / attempt_name
-    staging = root / f".staging-{uuid.uuid4().hex}"
+    staging = root / f".s-{uuid.uuid4().hex[:8]}"
     staging.mkdir()
     try:
         audit = audit_candidate(
@@ -292,18 +415,24 @@ def review_candidate(
             expected_sha256=candidate.source_theorem_json_sha256,
         )
         result = source.package.result
+        source_context, resolved_citations = _source_context_with_citations(
+            source
+        )
         comparison_response = provider.compare(
             backtranslation,
             source_statement=result.statement_verbatim,
             source_proof=result.proof_verbatim or "",
             source_proof_status=result.proof_status,
             source_proof_steps=[step.text_verbatim for step in result.proof_steps],
-            source_context=[item.text_verbatim for item in result.context_items],
+            source_context=source_context,
             source_uncertainties=result.uncertainties,
         )
         if not isinstance(comparison_response.value, SemanticComparison):
             raise ReviewError("comparison provider returned the wrong schema")
-        comparison = comparison_response.value
+        comparison = _normalize_complete_source_evidence(
+            comparison_response.value,
+            result.proof_status,
+        )
         mechanical_issues = _mechanical_issues(audit)
         if mechanical_issues:
             comparison = SemanticComparison.model_validate(
@@ -330,7 +459,12 @@ def review_candidate(
                     ),
                 }
             )
-        verdict = _final_verdict(audit, comparison, result.proof_status)
+        verdict = _final_verdict(
+            audit,
+            comparison,
+            result.proof_status,
+            result.kind,
+        )
 
         comparison_hash = _write_json(
             staging / "comparison" / "comparison.json",
@@ -339,6 +473,7 @@ def review_candidate(
                 "created_at": _now(),
                 "blind_backtranslation_sha256": backtranslation_hash,
                 "source_theorem_json_sha256": source.theorem_json_sha256,
+                "resolved_citations": resolved_citations,
                 "result": comparison.model_dump(mode="json"),
                 "effective_verdict": verdict,
                 "provider": comparison_response.metadata,
@@ -367,6 +502,13 @@ def review_candidate(
             "artifacts": {
                 "mechanical/audit.json": sha256_bytes(
                     (staging / "mechanical" / "audit.json").read_bytes()
+                ),
+                "mechanical/build-and-axiom-audit.log": sha256_bytes(
+                    (
+                        staging
+                        / "mechanical"
+                        / "build-and-axiom-audit.log"
+                    ).read_bytes()
                 ),
                 "blind/backtranslation.json": backtranslation_hash,
                 "comparison/comparison.json": comparison_hash,

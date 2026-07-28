@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import shutil
 import uuid
 from dataclasses import dataclass
@@ -13,6 +12,12 @@ from .prompts import (
     build_notes_template,
     build_source_theorem_markdown,
 )
+from .layout import (
+    attempt_name,
+    iter_attempt_dirs,
+    parse_attempt_name,
+    short_preparation_root,
+)
 from .reader import LoadedTheoremPackage, load_theorem_package, sha256_bytes
 
 
@@ -23,6 +28,8 @@ class PreparationError(ValueError):
 @dataclass(frozen=True)
 class PreparationPolicy:
     allow_uncertain: bool = False
+    allow_source_axiom: bool = False
+    allow_declaration_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -36,9 +43,6 @@ class PreparationResult:
     request_sha256: str
 
 
-_ATTEMPT_RE = re.compile(r"^attempt-(\d{3})$")
-
-
 def _validate_for_proof(loaded: LoadedTheoremPackage, policy: PreparationPolicy) -> None:
     result = loaded.package.result
     if not result.record_complete_in_chunk:
@@ -49,12 +53,23 @@ def _validate_for_proof(loaded: LoadedTheoremPackage, policy: PreparationPolicy)
         raise PreparationError(
             f"Agent 1 reported a theorem-boundary issue: {result.boundary_note}"
         )
-    if result.kind in {"axiom", "definition"}:
+    if result.kind == "definition":
         raise PreparationError(
             f"source kind '{result.kind}' is not a proof-bearing target for Agent 2"
         )
-    if result.proof_status == "not_applicable":
-        raise PreparationError("proof status 'not_applicable' is not a proof target")
+    if result.kind == "axiom" and not policy.allow_source_axiom:
+        raise PreparationError(
+            "source kind 'axiom' requires an explicit allow_source_axiom policy"
+        )
+    if result.proof_status == "not_applicable" and not (
+        result.kind == "axiom"
+        and policy.allow_source_axiom
+        and policy.allow_declaration_only
+    ):
+        raise PreparationError(
+            "proof status 'not_applicable' requires an axiom plus explicit "
+            "allow_source_axiom and allow_declaration_only policies"
+        )
     if result.uncertainties and not policy.allow_uncertain:
         raise PreparationError(
             "Agent 1 recorded extraction uncertainties; inspect them or pass "
@@ -63,12 +78,11 @@ def _validate_for_proof(loaded: LoadedTheoremPackage, policy: PreparationPolicy)
 
 
 def _next_attempt(preparation_root: Path) -> int:
-    attempts: list[int] = []
-    if preparation_root.is_dir():
-        for child in preparation_root.iterdir():
-            match = _ATTEMPT_RE.fullmatch(child.name)
-            if child.is_dir() and match:
-                attempts.append(int(match.group(1)))
+    attempts = [
+        parsed
+        for child in iter_attempt_dirs(preparation_root)
+        if (parsed := parse_attempt_name(child.name)) is not None
+    ]
     return max(attempts, default=0) + 1
 
 
@@ -150,23 +164,23 @@ def prepare_formalization(
     toolchain, manifest_bytes = _validate_template(Path(template_root).resolve())
 
     theorem_id = loaded.package.theorem_id
-    preparation_root = (
-        Path(output_root).resolve()
-        / theorem_id
-        / "formalization"
-        / "preparation"
-    )
+    try:
+        preparation_root = short_preparation_root(
+            Path(output_root), theorem_id
+        )
+    except ValueError as exc:
+        raise PreparationError(str(exc)) from exc
     preparation_root.mkdir(parents=True, exist_ok=True)
     attempt = _next_attempt(preparation_root)
-    attempt_name = f"attempt-{attempt:03d}"
-    attempt_dir = preparation_root / attempt_name
+    attempt_directory_name = attempt_name(preparation_root, attempt)
+    attempt_dir = preparation_root / attempt_directory_name
     if attempt_dir.exists():
         raise PreparationError(f"immutable attempt already exists: {attempt_dir}")
 
     staging_dir = preparation_root / f".staging-{uuid.uuid4().hex}"
     staging_dir.mkdir()
     try:
-        project_dir = staging_dir / "project"
+        project_dir = staging_dir / "lean"
         project_dir.mkdir()
 
         prompt_hash = _write_text(
@@ -208,25 +222,34 @@ def prepare_formalization(
             },
             "policy": {
                 "allow_uncertain": active_policy.allow_uncertain,
+                "allow_source_axiom": active_policy.allow_source_axiom,
+                "allow_declaration_only": active_policy.allow_declaration_only,
                 "record_complete_required": True,
-                "proof_bearing_target_required": True,
+                "proof_bearing_target_required": (
+                    loaded.package.result.proof_status != "not_applicable"
+                ),
+                "review_mode": (
+                    "declaration_only"
+                    if loaded.package.result.proof_status == "not_applicable"
+                    else "proof_method"
+                ),
             },
             "aristotle": {
                 "interface": "python.Project.create_from_directory",
                 "package": "aristotlelib==2.1.0",
                 "prompt_file": "prompt.txt",
-                "project_dir": "project",
+                "project_dir": "lean",
                 "agent_questions_setting": "DISABLED",
                 "polling_mode": "non_interactive",
             },
             "artifacts": {
                 "prompt.txt": prompt_hash,
-                "project/SOURCE_THEOREM.md": source_hash,
-                "project/FORMALIZATION_NOTES.md": notes_hash,
-                "project/Main.lean": main_hash,
-                "project/lakefile.toml": lakefile_hash,
-                "project/lean-toolchain": toolchain_hash,
-                "project/lake-manifest.json": manifest_hash,
+                "lean/SOURCE_THEOREM.md": source_hash,
+                "lean/FORMALIZATION_NOTES.md": notes_hash,
+                "lean/Main.lean": main_hash,
+                "lean/lakefile.toml": lakefile_hash,
+                "lean/lean-toolchain": toolchain_hash,
+                "lean/lake-manifest.json": manifest_hash,
             },
         }
         request_hash = _write_json(staging_dir / "request.json", request)
@@ -236,7 +259,7 @@ def prepare_formalization(
             "schema_version": "1.0",
             "theorem_id": theorem_id,
             "attempt": attempt,
-            "path": f"{attempt_name}/request.json",
+            "path": f"{attempt_directory_name}/request.json",
             "sha256": request_hash,
         }
         latest_temp = preparation_root / f".latest-{uuid.uuid4().hex}.json"
@@ -251,7 +274,7 @@ def prepare_formalization(
         theorem_id=theorem_id,
         attempt=attempt,
         attempt_dir=attempt_dir,
-        project_dir=attempt_dir / "project",
+        project_dir=attempt_dir / "lean",
         prompt_path=attempt_dir / "prompt.txt",
         request_path=attempt_dir / "request.json",
         request_sha256=request_hash,

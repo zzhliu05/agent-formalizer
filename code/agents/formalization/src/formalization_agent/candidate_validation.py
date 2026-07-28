@@ -5,6 +5,7 @@ import re
 import shutil
 import subprocess
 import tarfile
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
@@ -43,6 +44,10 @@ BuildRunner = Callable[[Path, Path, Path, int], BuildOutcome]
 
 _PROHIBITED_RE = re.compile(r"\b(sorryAx|sorry|admit)\b")
 _DECLARATION_RE = re.compile(r"\b(theorem|lemma)\b")
+_IMPORT_RE = re.compile(
+    r"^\s*import\s+([A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*)",
+    re.MULTILINE,
+)
 
 
 def safe_extract_tar(
@@ -185,6 +190,20 @@ def _find_project_root(extracted_root: Path) -> tuple[Path, Path]:
     return main_path.parent, main_path
 
 
+def compact_candidate_tree(extracted_root: Path, destination: Path) -> Path:
+    """Keep only the Lean project tree; the original archive remains authoritative."""
+    project_root, _ = _find_project_root(extracted_root)
+    target = destination.resolve()
+    if target.exists():
+        raise CandidateValidationError(
+            f"compact candidate destination already exists: {target}"
+        )
+    project_root.replace(target)
+    if extracted_root.exists():
+        shutil.rmtree(extracted_root)
+    return target
+
+
 def _verify_protected_files(
     project_root: Path, prepared_project: Path, artifact_hashes: dict[str, str]
 ) -> None:
@@ -194,8 +213,16 @@ def _verify_protected_files(
         "lakefile.toml",
         "lake-manifest.json",
     }
+    artifact_prefix = next(
+        (
+            prefix
+            for prefix in ("lean", "project", prepared_project.name)
+            if any(f"{prefix}/{relative}" in artifact_hashes for relative in protected)
+        ),
+        prepared_project.name,
+    )
     for relative in protected:
-        artifact_key = f"project/{relative}"
+        artifact_key = f"{artifact_prefix}/{relative}"
         expected = artifact_hashes.get(artifact_key)
         prepared = prepared_project / relative
         candidate = project_root / relative
@@ -251,6 +278,96 @@ def _scan_lean_files(
     return hashes
 
 
+def _run_lean_process(
+    command: list[str],
+    *,
+    project_root: Path,
+    lean_env: dict[str, str],
+    timeout_seconds: float,
+) -> BuildOutcome:
+    start = time.monotonic()
+    process = subprocess.Popen(
+        command,
+        cwd=project_root,
+        env=lean_env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        start_new_session=os.name != "nt",
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=max(0.001, timeout_seconds))
+        return BuildOutcome(
+            command=command,
+            exit_code=process.returncode,
+            timed_out=False,
+            duration_seconds=time.monotonic() - start,
+            stdout=stdout,
+            stderr=stderr,
+        )
+    except subprocess.TimeoutExpired:
+        if os.name == "nt":
+            subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                capture_output=True,
+                check=False,
+            )
+        else:
+            import signal
+
+            os.killpg(process.pid, signal.SIGKILL)
+        stdout, stderr = process.communicate()
+        return BuildOutcome(
+            command=command,
+            exit_code=None,
+            timed_out=True,
+            duration_seconds=time.monotonic() - start,
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+
+def _local_import_order(project_root: Path, target: Path) -> list[Path]:
+    """Return local imported modules in dependency-first order."""
+    root = project_root.resolve()
+    target = target.resolve()
+    visiting: set[Path] = set()
+    visited: set[Path] = set()
+    ordered: list[Path] = []
+
+    def visit(source_path: Path) -> None:
+        source_path = source_path.resolve()
+        if source_path in visited:
+            return
+        if source_path in visiting:
+            relative = source_path.relative_to(root).as_posix()
+            raise CandidateValidationError(
+                f"local Lean import cycle contains {relative}"
+            )
+        visiting.add(source_path)
+        try:
+            source = source_path.read_text(encoding="utf-8-sig")
+            stripped = strip_lean_comments_and_strings(source)
+        except (OSError, UnicodeDecodeError) as exc:
+            raise CandidateValidationError(
+                f"cannot inspect local Lean imports in {source_path}: {exc}"
+            ) from exc
+        for module in _IMPORT_RE.findall(stripped):
+            relative = Path(*module.split(".")).with_suffix(".lean")
+            dependency = (root / relative).resolve()
+            if dependency.is_relative_to(root) and dependency.is_file():
+                visit(dependency)
+        visiting.remove(source_path)
+        visited.add(source_path)
+        if source_path != target:
+            ordered.append(source_path)
+
+    visit(target)
+    return ordered
+
+
 def run_local_lean_check(
     project_root: Path,
     main_path: Path,
@@ -293,49 +410,71 @@ def run_local_lean_check(
     if not executable.is_file():
         raise CandidateValidationError(f"Lean executable is missing: {executable}")
 
-    relative_main = main_path.relative_to(project_root)
-    command = [str(executable), str(relative_main)]
-    start = time.monotonic()
-    process = subprocess.Popen(
-        command,
-        cwd=project_root,
-        env=lean_env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        start_new_session=os.name != "nt",
-    )
-    try:
-        stdout, stderr = process.communicate(timeout=timeout_seconds)
-        return BuildOutcome(
-            command=command,
-            exit_code=process.returncode,
-            timed_out=False,
-            duration_seconds=time.monotonic() - start,
-            stdout=stdout,
-            stderr=stderr,
+    root = project_root.resolve()
+    target = main_path.resolve()
+    dependencies = _local_import_order(root, target)
+    started = time.monotonic()
+    stdout_parts: list[str] = []
+    stderr_parts: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="agent2-lean-modules-") as directory:
+        module_root = Path(directory).resolve()
+        inherited_path = lean_env.get("LEAN_PATH", "")
+        lean_env["LEAN_PATH"] = (
+            str(module_root)
+            if not inherited_path
+            else str(module_root) + os.pathsep + inherited_path
         )
-    except subprocess.TimeoutExpired:
-        if os.name == "nt":
-            subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                capture_output=True,
-                check=False,
+        for dependency in dependencies:
+            elapsed = time.monotonic() - started
+            remaining = timeout_seconds - elapsed
+            relative = dependency.relative_to(root)
+            output = module_root / relative.with_suffix(".olean")
+            output.parent.mkdir(parents=True, exist_ok=True)
+            command = [
+                str(executable),
+                "-o",
+                str(output),
+                str(relative),
+            ]
+            outcome = _run_lean_process(
+                command,
+                project_root=root,
+                lean_env=lean_env,
+                timeout_seconds=remaining,
             )
-        else:
-            import signal
+            stdout_parts.append(
+                f"[local module {relative.as_posix()}]\n{outcome.stdout}"
+            )
+            stderr_parts.append(
+                f"[local module {relative.as_posix()}]\n{outcome.stderr}"
+            )
+            if outcome.timed_out or outcome.exit_code != 0:
+                return BuildOutcome(
+                    command=outcome.command,
+                    exit_code=outcome.exit_code,
+                    timed_out=outcome.timed_out,
+                    duration_seconds=time.monotonic() - started,
+                    stdout="\n".join(stdout_parts),
+                    stderr="\n".join(stderr_parts),
+                )
 
-            os.killpg(process.pid, signal.SIGKILL)
-        stdout, stderr = process.communicate()
+        relative_main = target.relative_to(root)
+        command = [str(executable), str(relative_main)]
+        outcome = _run_lean_process(
+            command,
+            project_root=root,
+            lean_env=lean_env,
+            timeout_seconds=timeout_seconds - (time.monotonic() - started),
+        )
+        stdout_parts.append(f"[target {relative_main.as_posix()}]\n{outcome.stdout}")
+        stderr_parts.append(f"[target {relative_main.as_posix()}]\n{outcome.stderr}")
         return BuildOutcome(
-            command=command,
-            exit_code=None,
-            timed_out=True,
-            duration_seconds=time.monotonic() - start,
-            stdout=stdout,
-            stderr=stderr,
+            command=outcome.command,
+            exit_code=outcome.exit_code,
+            timed_out=outcome.timed_out,
+            duration_seconds=time.monotonic() - started,
+            stdout="\n".join(stdout_parts),
+            stderr="\n".join(stderr_parts),
         )
 
 
@@ -349,7 +488,14 @@ def validate_candidate(
 ) -> CandidateValidation:
     project_root, main_path = _find_project_root(extracted_root)
     _verify_protected_files(project_root, prepared_project, artifact_hashes)
-    prepared_main_hash = artifact_hashes.get("project/Main.lean")
+    prepared_main_hash = next(
+        (
+            artifact_hashes[key]
+            for key in ("lean/Main.lean", "project/Main.lean")
+            if key in artifact_hashes
+        ),
+        None,
+    )
     if not prepared_main_hash:
         raise CandidateValidationError("prepared Main.lean hash is missing")
     lean_hashes = _scan_lean_files(project_root, prepared_main_hash)

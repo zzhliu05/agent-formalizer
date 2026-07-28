@@ -33,30 +33,56 @@ the latest-pointer SHA-256, requires `context.md` and `source.txt`, and strictly
 validates the Agent 1 schema. It rejects:
 
 - incomplete theorem boundaries;
-- definitions and axioms, which are not proof-bearing Agent 2 targets;
-- `not_applicable` proof records;
+- definitions;
+- source axioms unless `--allow-source-axiom` is explicit;
+- `not_applicable` proof records unless the record is a source axiom and both
+  `--allow-source-axiom` and `--allow-declaration-only` are explicit;
 - extraction uncertainties unless `--allow-uncertain` is supplied explicitly.
 
 A partial, omitted, by-reference, or left-to-reader printed proof is allowed.
 The generated prompt labels that status and instructs Aristotle to construct a
 complete proof independently rather than inventing missing source text.
 
+A declaration-only source principle still has to become a complete,
+kernel-checked Lean theorem with no new axiom or placeholder. Agent 3 audits its
+formal statement but records `accepted_declaration`, never proof-method
+agreement, because the source supplied no proof method.
+
 By default generated bundles are written beneath:
 
 ```text
-outputs/pipeline/<theorem_id>/formalization/preparation/
-  latest.json
-  attempt-NNN/
-    request.json
-    prompt.txt
-    project/
-      Main.lean
-      SOURCE_THEOREM.md
-      FORMALIZATION_NOTES.md
-      lean-toolchain
-      lakefile.toml
-      lake-manifest.json
+outputs/pipeline/t-<16-hex>/
+  theorem.json
+  prep/
+    latest.json
+    NNN/
+      request.json
+      prompt.txt
+      lean/
+        Main.lean
+        SOURCE_THEOREM.md
+        FORMALIZATION_NOTES.md
+        lean-toolchain
+        lakefile.toml
+        lake-manifest.json
 ```
+
+The compact theorem key is the first 16 hexadecimal characters of
+`SHA-256(theorem_id)`, prefixed with `t-`. `theorem.json`, `request.json`, and
+all later handoffs retain the complete theorem ID; the hash-derived directory
+is only a stable path component. Existing compact metadata is checked before
+reuse, so a collision or modified mapping is rejected.
+
+This replaces the longer legacy nesting:
+
+```text
+<theorem_id>/formalization/preparation/attempt-NNN/project/
+```
+
+Legacy preparation and generation trees remain readable for resume,
+revalidation, review, and revision. Existing results are not moved
+automatically, including an Agent 2 or Agent 3 process that is currently
+writing them.
 
 `outputs/pipeline/` is ignored because source excerpts may be copyrighted. The
 sanitized `request.json` stores input and artifact hashes, the pinned
@@ -105,12 +131,13 @@ handoff.
 Generation artifacts are append-only by attempt:
 
 ```text
-outputs/pipeline/<theorem_id>/formalization/generation/
+outputs/pipeline/t-<16-hex>/gen/
   latest.json
-  attempt-NNN/
+  latest-ready.json
+  NNN/
     run.json
     result.tar.gz
-    result/
+    lean/
       Main.lean
       SOURCE_THEOREM.md
       FORMALIZATION_NOTES.md
@@ -122,15 +149,22 @@ outputs/pipeline/<theorem_id>/formalization/generation/
 Before writing `handoff.json`, Agent 2:
 
 - safely extracts the result archive without links or path traversal;
+- retains the original `result.tar.gz` while normalizing the usable returned
+  project directly to `lean/`, removing provider-specific wrapper folders such
+  as `result/output-final_aristotle/`;
 - confirms Aristotle did not modify the source theorem, toolchain, Lake file,
   or Mathlib manifest;
 - rejects unchanged staging output and Lean source containing executable
   `sorry`, `admit`, or `sorryAx`;
 - requires at least one theorem or lemma declaration;
-- runs the returned `Main.lean` through the pinned Lean 4.28.0 / Mathlib
-  environment.
+- resolves local imports from the target, compiles their source modules in
+  dependency order into an isolated temporary `.olean` tree, and then runs the
+  returned `Main.lean` through the pinned Lean 4.28.0 / Mathlib environment.
 
 Only a candidate passing all mechanical gates reaches `ready_for_review`.
+`latest.json` records every newest attempt, while `latest-ready.json` advances
+only with a validated handoff; a later failed revision therefore cannot hide
+the most recent reviewable candidate from chapter orchestration.
 `handoff.json` retains the Aristotle project/task IDs and assigns the semantic
 questioning loop to Agent 3. Agent 3 may later ask questions or request a
 revision, but every revised candidate must return through Agent 2's mechanical
@@ -151,11 +185,19 @@ prompt. The validator:
   gates; and
 - emits a new `handoff.json` containing the Agent 3 revision provenance.
 
+When these gates return `validation_failed`, Agent 3's orchestrator reads the
+structured error and bounded `build.log` tail, emits a hash-bound validation
+repair request against that exact failed Task checkpoint, and sends another
+in-project Aristotle instruction automatically. Agent 2 still owns every
+returned archive check. Repeated no-op Lean checkpoints are detected, and a
+separate configured repair limit prevents an infinite retry loop.
+
 This keeps the loop boundary explicit:
 
 ```text
 Agent 3 revision request and Aristotle follow-up
   -> Agent 2 archive validation
+     -> validation_failed: automatic diagnostic repair and revalidation
   -> new Agent 3 review
 ```
 

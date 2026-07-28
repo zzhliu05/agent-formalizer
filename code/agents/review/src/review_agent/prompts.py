@@ -18,9 +18,18 @@ Compare a previously frozen Lean-only back-translation against an Agent 1 source
 record. Require mathematical equivalence of statement and exact agreement of the
 proof method at the level supported by the printed source. Any changed domain,
 quantifier, hypothesis, direction, edge case, construction, reduction, or cited
-result is an error. If the printed proof is partial, omitted, or only by reference,
-the method is unverifiable and the verdict must be needs_reextraction. Return only
-the requested strict JSON object."""
+result is an error. A partial or left-to-reader proof may still supply enough
+high-level method evidence when the printed source explicitly states that method
+and only local details are omitted. A by-reference proof is sufficient only when
+the reference is explicit and the Lean proof applies that same result or its
+established formal counterpart. Record every filled omission in
+omitted_detail_notes. If the source gives no usable method, mark evidence
+insufficient and return needs_reextraction. Return only the requested strict JSON
+object. The supplied source_proof_status determines source_method_evidence:
+complete maps to complete even when Lean expands routine implicit details;
+partial and left_to_reader map to partial_but_sufficient only when the printed
+method is sufficient; by_reference maps to reference_only_sufficient only when
+the cited result is usable; every other status maps to insufficient."""
 
 
 def blind_translation_prompt(

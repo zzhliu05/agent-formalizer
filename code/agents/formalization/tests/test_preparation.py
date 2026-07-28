@@ -11,7 +11,9 @@ from formalization_agent.preparer import (
     PreparationPolicy,
     prepare_formalization,
 )
+from formalization_agent.layout import short_theorem_key
 from formalization_agent.reader import PackageReadError, load_theorem_package
+from formalization_agent.revision_validation import _is_descendant_checkpoint
 
 
 FORMALIZATION_ROOT = Path(__file__).resolve().parents[1]
@@ -107,6 +109,60 @@ def _valid_payload(
     }
 
 
+class RevisionCheckpointTests(unittest.TestCase):
+    def test_descendant_checkpoint_must_trace_to_reviewed_parent(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            generation = Path(directory)
+            reviewed = generation / "attempt-001"
+            checkpoint = generation / "attempt-002"
+            unrelated = generation / "attempt-003"
+            for path in (reviewed, checkpoint, unrelated):
+                path.mkdir()
+            _write_json(
+                reviewed / "run.json",
+                {
+                    "state": "ready_for_review",
+                    "aristotle": {"project_id": "project", "task_id": "reviewed"},
+                },
+            )
+            _write_json(
+                checkpoint / "run.json",
+                {
+                    "state": "validation_failed",
+                    "aristotle": {"project_id": "project", "task_id": "checkpoint"},
+                    "revision": {
+                        "parent_run_json": str((reviewed / "run.json").resolve())
+                    },
+                },
+            )
+            (checkpoint / "result.tar.gz").write_bytes(b"checkpoint")
+            _write_json(
+                unrelated / "run.json",
+                {
+                    "state": "validation_failed",
+                    "aristotle": {"project_id": "project", "task_id": "unrelated"},
+                },
+            )
+            (unrelated / "result.tar.gz").write_bytes(b"unrelated")
+
+            self.assertTrue(
+                _is_descendant_checkpoint(
+                    generation,
+                    reviewed,
+                    project_id="project",
+                    task_id="checkpoint",
+                )
+            )
+            self.assertFalse(
+                _is_descendant_checkpoint(
+                    generation,
+                    reviewed,
+                    project_id="project",
+                    task_id="unrelated",
+                )
+            )
+
+
 def _write_package(
     root: Path, payload: dict[str, object], *, with_latest: bool = True
 ) -> tuple[Path, Path]:
@@ -182,6 +238,22 @@ class PreparationTests(unittest.TestCase):
             )
 
             self.assertEqual(prepared.attempt, 1)
+            expected_theorem_root = (
+                root / "output" / short_theorem_key("demo-theorem-001")
+            )
+            self.assertEqual(
+                prepared.attempt_dir,
+                expected_theorem_root / "prep" / "001",
+            )
+            self.assertEqual(prepared.project_dir.name, "lean")
+            metadata = json.loads(
+                (expected_theorem_root / "theorem.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(metadata["theorem_id"], "demo-theorem-001")
+            self.assertEqual(metadata["layout"], "agent2-short-v1")
+            self.assertNotIn("demo-theorem-001", prepared.attempt_dir.parts)
             self.assertTrue(prepared.request_path.is_file())
             self.assertTrue((prepared.project_dir / "SOURCE_THEOREM.md").is_file())
             self.assertTrue((prepared.project_dir / "Main.lean").is_file())
@@ -219,6 +291,29 @@ class PreparationTests(unittest.TestCase):
             )
             self.assertEqual(second.attempt, 2)
             self.assertTrue(prepared.attempt_dir.is_dir())
+
+    def test_rejects_modified_short_theorem_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, extraction = _write_package(root / "input", _valid_payload())
+            prepared = prepare_formalization(
+                extraction,
+                output_root=root / "output",
+                template_root=FORMALIZATION_ROOT,
+            )
+            metadata_path = prepared.attempt_dir.parent.parent / "theorem.json"
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            metadata["theorem_id"] = "different-theorem"
+            _write_json(metadata_path, metadata)
+
+            with self.assertRaisesRegex(
+                PreparationError, "collision or modified metadata"
+            ):
+                prepare_formalization(
+                    extraction,
+                    output_root=root / "output",
+                    template_root=FORMALIZATION_ROOT,
+                )
 
     def test_allows_missing_printed_proof_and_labels_it(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -260,7 +355,7 @@ class PreparationTests(unittest.TestCase):
 
     def test_rejects_non_proof_target_and_incomplete_boundary(self) -> None:
         for payload, pattern in (
-            (_valid_payload(kind="axiom"), "not a proof-bearing"),
+            (_valid_payload(kind="axiom"), "explicit allow_source_axiom"),
             (
                 _valid_payload(record_complete=False),
                 "incomplete at the chunk boundary",
@@ -279,6 +374,59 @@ class PreparationTests(unittest.TestCase):
                         output_root=root / "output",
                         template_root=FORMALIZATION_ROOT,
                     )
+
+    def test_source_axiom_requires_explicit_opt_in(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, extraction = _write_package(
+                root / "input", _valid_payload(kind="axiom")
+            )
+            prepared = prepare_formalization(
+                extraction,
+                output_root=root / "output",
+                template_root=FORMALIZATION_ROOT,
+                policy=PreparationPolicy(allow_source_axiom=True),
+            )
+            request = json.loads(
+                prepared.request_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(request["input"]["kind"], "axiom")
+            self.assertTrue(request["policy"]["allow_source_axiom"])
+
+    def test_declaration_only_axiom_requires_two_explicit_opt_ins(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, extraction = _write_package(
+                root / "input",
+                _valid_payload(kind="axiom", proof_status="not_applicable"),
+            )
+            with self.assertRaisesRegex(
+                PreparationError,
+                "allow_source_axiom and allow_declaration_only",
+            ):
+                prepare_formalization(
+                    extraction,
+                    output_root=root / "output",
+                    template_root=FORMALIZATION_ROOT,
+                    policy=PreparationPolicy(allow_source_axiom=True),
+                )
+
+            prepared = prepare_formalization(
+                extraction,
+                output_root=root / "output",
+                template_root=FORMALIZATION_ROOT,
+                policy=PreparationPolicy(
+                    allow_source_axiom=True,
+                    allow_declaration_only=True,
+                ),
+            )
+            request = json.loads(prepared.request_path.read_text(encoding="utf-8"))
+            self.assertEqual(request["policy"]["review_mode"], "declaration_only")
+            self.assertFalse(request["policy"]["proof_bearing_target_required"])
+            self.assertIn(
+                "declaration-only statement review",
+                prepared.prompt_path.read_text(encoding="utf-8"),
+            )
 
 
 if __name__ == "__main__":
