@@ -2,7 +2,7 @@
 type: wiki
 status: seed
 created: 2026-07-22
-updated: 2026-07-25
+updated: 2026-07-28
 ---
 
 # 多 Agent 形式化数学教材 Vault Index
@@ -16,6 +16,7 @@ This is the navigational map for the project. Start here after reading the newes
 ## Active Processes
 
 - P001 — [[../docs/architecture/Four-Agent Pipeline|Four-Agent Formalization Pipeline]]: define and implement the PDF-to-Lean workflow across extraction, formalization, and independent review.
+- P002 — [[papers/HyperTree Proof Search for Neural Theorem Proving]] and [[papers/Aristotle IMO-level Automated Theorem Proving]]: study proof-hypergraph search, online learning, informal lemma decomposition, and formal feedback as direct references for the local formalization and review pipeline.
 
 ## Wiki Areas
 
@@ -23,6 +24,12 @@ This is the navigational map for the project. Start here after reading the newes
 - `wiki/concepts/` - reusable concepts, definitions, and conceptual building blocks.
 - `wiki/methods/` - algorithms, mathematical tools, workflows, and technical procedures.
 - `wiki/papers/` - durable source-oriented paper pages.
+
+## Papers
+
+- [[papers/Aristotle IMO-level Automated Theorem Proving]] — hybrid informal reasoning, Lean proof search, formal feedback, and IMO-level automated theorem proving.
+- [[papers/HyperTree Proof Search for Neural Theorem Proving]] — proof-hypergraph search, learned policy/critic guidance, and online training for Metamath and Lean.
+- [[papers/CC-OCR V2]] — document OCR and structured extraction benchmark relevant to Agent 1.
 
 ## Working Areas
 

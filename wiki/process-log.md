@@ -9,6 +9,14 @@ updated: 2026-07-28
 
 Newest entries go at the top. Future agents should read only the most recent relevant entries by default, then follow links outward.
 
+## 2026-07-28 - HTPS and Aristotle Papers Collected
+
+Status: active
+Process: P002
+Links: [[papers/HyperTree Proof Search for Neural Theorem Proving]] - [[papers/Aristotle IMO-level Automated Theorem Proving]] - [[../raw/papers/2205.11491v1 HyperTree Proof Search for Neural Theorem Proving.pdf]] - [[../raw/papers/2510.01346v2 Aristotle IMO-level Automated Theorem Proving.pdf]]
+Summary: Added arXiv:2205.11491v1 and arXiv:2510.01346v2 with source-oriented pages covering proof-hypergraph search, policy/critic guidance, online training, informal lemma decomposition, and formal feedback. Both pages cross-link the search layer with the local Agent 2/Agent 3 boundaries and distinguish source claims from local interpretation.
+Next: Compare the two papers' search-state and lemma-reuse models with the local revision and validation schemas.
+
 ## 2026-07-28 - Four-Agent Naming Standardized
 
 Status: resolved
